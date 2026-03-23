@@ -147,26 +147,46 @@ def validate(project: str, config: str):
 @cli.command()
 @click.option("--project", "-p", required=True, help="Dataiku project key")
 @click.option("--format", "-f", "fmt", type=click.Choice(["html", "json"]), default="json")
+@click.option("--output", "-o", "output_path", default=None, help="Output file path (default: output/<project>_report.<fmt>)")
 @click.option("--config", "-c", default="config/config.yaml", help="Config file path")
-def report(project: str, fmt: str, config: str):
-    """Generate migration report."""
+def report(project: str, fmt: str, output_path: str | None, config: str):
+    """Generate migration validation report."""
+    from src.models.report import save_html_report, save_json_report, generate_json_report
+
     orch = _build_orchestrator(config)
-    results = orch.get_results()
-    report_data = {
-        name: {
-            "status": r.status.value,
-            "processed": r.assets_processed,
-            "converted": r.assets_converted,
-            "failed": r.assets_failed,
-            "review_flags": r.review_flags,
-            "errors": r.errors,
-        }
-        for name, r in results.items()
-    }
-    if fmt == "json":
-        click.echo(json.dumps(report_data, indent=2))
+    orch.config.dataiku.project_key = project
+
+    # Run validation agent to produce detailed report
+    result = asyncio.run(orch.run_agent("validator"))
+    report_data = result.details.get("report")
+
+    if report_data:
+        from src.models.report import ValidationReport
+        rpt = ValidationReport.model_validate(report_data)
     else:
-        click.echo(f"HTML report generation not yet implemented for project: {project}")
+        # Fallback: lightweight report from agent results
+        click.echo(json.dumps({
+            "status": result.status.value,
+            "processed": result.assets_processed,
+            "converted": result.assets_converted,
+            "failed": result.assets_failed,
+        }, indent=2))
+        return
+
+    output_dir = Path(orch.config.migration.output_dir)
+    if output_path is None:
+        output_path = str(output_dir / f"{project}_report.{fmt}")
+
+    if fmt == "json":
+        save_json_report(rpt, output_path)
+    else:
+        save_html_report(rpt, output_path)
+
+    click.echo(f"Report saved: {output_path}")
+    summary = rpt.to_summary()
+    click.echo(f"  Assets: {summary['total_assets']} total, "
+               f"{summary['passed']} passed, {summary['failed']} failed — "
+               f"{summary['success_rate']} success rate")
 
 
 if __name__ == "__main__":

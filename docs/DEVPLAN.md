@@ -1,7 +1,7 @@
 # Development Plan — Dataiku to Fabric Migration Toolkit
 
 > Phased roadmap from scaffold to production-ready migration tool.
-> **Last updated:** 2026-03-23 (Phase 6)
+> **Last updated:** 2026-03-23 (Phase 7)
 
 ---
 
@@ -27,8 +27,8 @@
 | Dataset agent | **Done** | Type mapping with precision, DDL (Lakehouse+Warehouse), partitioning, schema comparison, export manifests |
 | Flow pipeline agent | **Done** | DAG builder, topological sort, 6 activity types, 6 trigger types, converted asset refs |
 | Connection agent | **Done** | 12 connection types, gateway/shortcut/pipeline templates, credential mapping |
-| Validation agent | Scaffold | Basic state checks, no deep validation |
-| Tests | **404 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), conftest fixtures |
+| Validation agent | **Done** | Schema comparison, row count, SQL syntax, notebook structure, pipeline integrity, connection mapping, review flags |
+| Tests | **489 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), conftest fixtures |
 
 ---
 
@@ -42,7 +42,7 @@
 | **Phase 4** | ~~Python + Visual recipes — expand SDK patterns, Prepare recipe~~ | **DONE** — 93 tests green (32+17+16+40) |
 | **Phase 5** | ~~Dataset + Connection migration — DDL, type mapping, connection templates~~ | **DONE** — 94 tests green (55+39) |
 | **Phase 6** | ~~Flow → Pipeline — DAG builder, trigger mapping, activity references~~ | **DONE** — 65 tests green |
-| Phase 7 | Validation — deep schema match, row counts, report HTML/JSON | Validation report generated |
+| **Phase 7** | ~~Validation — deep schema match, row counts, report HTML/JSON~~ | **DONE** — 85 tests green |
 | Phase 8 | Integration testing, perf, packaging, docs | E2E green, pip-installable |
 
 ---
