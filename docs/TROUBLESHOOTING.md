@@ -109,6 +109,50 @@ If the generated `.ipynb` notebook fails to run:
 - Use the `--agents` flag to run only specific agents for iterative debugging.
 - Profile with the integration performance test: `pytest tests/integration/test_perf.py -v`.
 
+## Checkpoint & Resume
+
+### Migration interrupted — how to resume
+
+If a migration was interrupted (crash, timeout, Ctrl+C), resume from the last checkpoint:
+
+```bash
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --resume
+```
+
+The `--resume` flag loads the most recent registry state and skips agents that already completed successfully.
+
+### Re-running a specific agent after a fix
+
+If an agent failed and you've fixed the underlying issue, re-run just that agent (and any downstream dependents):
+
+```bash
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --rerun sql_migration
+```
+
+Multiple agents can be re-run:
+
+```bash
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --rerun sql_migration --rerun validation
+```
+
+### Checkpoint files accumulating
+
+Checkpoint files are saved in the output directory during migration. By default, they are cleaned up after a successful run. If you used `--keep-checkpoints`, you can manually delete them:
+
+```bash
+rm output/checkpoint_wave_*.json
+```
+
+### Migrating only specific assets
+
+To re-process a subset of assets without running the full pipeline:
+
+```bash
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --asset-ids "recipe_sql_1,dataset_customers"
+```
+
+This filters the registry to only the specified asset IDs and skips the discovery phase.
+
 ## Getting Help
 
 - Check [docs/SETUP.md](SETUP.md) for installation instructions.

@@ -25,6 +25,9 @@ You are the **Orchestrator** agent for the Dataiku to Fabric migration project. 
 5. **Parallel execution**: Run independent agents concurrently
 6. **Progress tracking**: Real-time status reporting
 7. **Error handling**: Fatal/Recoverable/Skippable error classification
+8. **Checkpoint & Resume**: Save registry state after each wave; resume from last checkpoint
+9. **Selective Re-Run**: Reset specific agent(s) + downstream dependents via `--rerun`
+10. **Asset Filtering**: Process only specific assets via `--asset-ids`
 
 ## Constraints
 
@@ -53,3 +56,9 @@ You are the **Orchestrator** agent for the Dataiku to Fabric migration project. 
 - Agents communicate only via the Asset Registry — never directly
 - `--fail-fast` mode stops on first agent failure
 - `--parallel` mode runs independent agents concurrently (up to `max_concurrent_agents`)
+- `--resume` loads latest registry state and skips completed agents
+- `--rerun agent_name` resets agent + downstream dependents, re-processes
+- `--asset-ids "id1,id2"` filters registry to specific assets, skips discovery
+- `--keep-checkpoints` preserves checkpoint files after successful run
+- Checkpoints saved as `checkpoint_wave_N.json` after each wave
+- Circuit breaker: skip agent after N consecutive failures (`circuit_breaker_threshold`)

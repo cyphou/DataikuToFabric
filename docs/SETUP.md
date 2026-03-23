@@ -90,6 +90,38 @@ Run the full migration pipeline (discovery → conversion → validation):
 dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE
 ```
 
+#### Resume from checkpoint
+
+If a migration was interrupted, resume from the last checkpoint:
+
+```bash
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --resume
+```
+
+#### Re-run specific agents
+
+Re-run one or more agents (and their downstream dependents):
+
+```bash
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --rerun sql_migration --rerun validation
+```
+
+#### Filter by asset IDs
+
+Migrate only specific assets:
+
+```bash
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --asset-ids "recipe_sql_1,dataset_customers"
+```
+
+#### Keep checkpoints
+
+By default, checkpoints are cleaned up after a successful run. To keep them:
+
+```bash
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --keep-checkpoints
+```
+
 ### 3. Validate
 
 Run validation only (assumes assets are already converted):

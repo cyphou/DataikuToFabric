@@ -20,7 +20,7 @@ Dataiku API → [Discovery] → Asset Registry (JSON) → [Conversion Agents] �
 - **Agents**: `src/agents/` — 9 migration agents
 - **Translation**: `src/translators/` — SQL dialect translators (Oracle→T-SQL, PostgreSQL→T-SQL)
 - **Target**: `src/connectors/` — Fabric REST API client
-- **Core**: `src/core/` — orchestrator, registry, config, logging
+- **Core**: `src/core/` — orchestrator, registry (with checkpoint/resume), config, logging
 - **Models**: `src/models/` — asset, state machine, report data models
 - **Tests**: `tests/` — unit and integration tests
 - **Docs**: `docs/` — architecture, dev plan, agents, mapping reference

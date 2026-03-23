@@ -30,8 +30,8 @@ Dataiku API → [Discovery Agent] → Asset Registry (JSON)
 ## Project Structure
 
 - **src/core/**: Orchestration, config, registry, logging
-  - `orchestrator.py`: DAG-based agent execution, parallel dispatch, retry logic
-  - `registry.py`: Asset Registry (in-memory + JSON persistence) — central state store
+  - `orchestrator.py`: DAG-based agent execution, parallel dispatch, retry logic, checkpoint/resume, selective re-run
+  - `registry.py`: Asset Registry (in-memory + JSON persistence) — central state store, checkpoint operations
   - `config.py`: Pydantic-based YAML config loader
   - `logger.py`: Structured logging (structlog)
 - **src/agents/**: All 9 migration agents (discovery, sql, python, visual, dataset, flow, connection, validation) + base class
@@ -104,3 +104,12 @@ This project uses a **9-agent specialization model**. See `docs/AGENTS.md` for t
 | `dataiku.Dataset("x").write_dataframe(df)` | `df.write.format("delta").mode("overwrite").save("Tables/x")` |
 | `dataiku.Folder("x").get_path()` | `"/lakehouse/default/Files/x"` |
 | `import dataiku` | PySpark imports |
+
+## Orchestrator Capabilities
+
+- **Checkpoint**: Saves registry state after each wave to `checkpoint_wave_N.json`
+- **Resume** (`--resume`): Loads saved state, skips completed agents, continues from interruption point
+- **Selective re-run** (`--rerun agent_name`): Resets specific agent(s) + downstream dependents, re-processes
+- **Asset filtering** (`--asset-ids "id1,id2"`): Filters registry to specific assets, skips discovery
+- **Checkpoint cleanup**: Auto-removes checkpoint files on success (opt out with `--keep-checkpoints`)
+- **Circuit breaker**: Skips agent after N consecutive failures (`circuit_breaker_threshold` in config)

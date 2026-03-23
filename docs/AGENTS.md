@@ -225,6 +225,8 @@ Central coordinator that manages the migration lifecycle, dispatches agents, tra
 | 4 | **State Management** | Track per-asset migration state (`pending` → `in_progress` → `done` / `failed`) |
 | 5 | **Retry Logic** | Re-run failed agents up to `max_retries` (configurable) |
 | 6 | **Reporting** | Generate final migration report (HTML + JSON) |
+| 7 | **Checkpoint & Resume** | Save registry state after each wave; resume from last checkpoint on `--resume` |
+| 8 | **Selective Re-Run** | Re-run specific agents (and downstream) via `--rerun`; filter assets via `--asset-ids` |
 
 ### Execution Order (DAG)
 
@@ -261,11 +263,26 @@ orchestrator:
   parallel_agents: true
   max_concurrent: 4
   fail_fast: false          # Continue other agents on failure
+  agent_timeout_seconds: 300
+  circuit_breaker_threshold: 3
   report_format: [html, json]
   notifications:
     on_complete: true
     on_failure: true
 ```
+
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--project` | Dataiku project key |
+| `--target` | Fabric workspace name/ID |
+| `--agents` | Run only specific agents |
+| `--resume` | Resume from last checkpoint |
+| `--rerun` | Re-run specific agent(s) and downstream dependents |
+| `--asset-ids` | Comma-separated asset IDs to process |
+| `--keep-checkpoints` | Don't clean up checkpoint files after success |
+| `--fail-fast` | Stop on first agent failure |
 
 ---
 

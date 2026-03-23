@@ -261,7 +261,7 @@ DataikuToFabric/
 │       └── report.py                 ← Report data model
 │
 ├── 🧪 tests/
-│   ├── test_*.py                     ← Unit tests (489+)
+│   ├── test_*.py                     ← Unit tests (566+)
 │   ├── fixtures/                     ← Test fixtures & samples
 │   └── integration/
 │       ├── test_e2e_pipeline.py      ← End-to-end pipeline tests
@@ -292,6 +292,7 @@ DataikuToFabric/
 | 6 — Orchestration & CLI | 🟢 Done | DAG orchestrator, retry logic, full CLI |
 | 7 — Validation | 🟢 Done | Schema, SQL, notebook, pipeline, connection validation + reports |
 | 8 — Integration & Packaging | 🟢 Done | E2E tests, perf tests, Docker, CI, docs, CHANGELOG |
+| 9 — Checkpoint & Resume | 🟢 Done | Checkpoint/resume, selective re-run, asset filtering (566 tests, 85% cov) |
 
 ---
 

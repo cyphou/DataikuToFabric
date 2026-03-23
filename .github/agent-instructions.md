@@ -13,7 +13,9 @@ Rules for AI coding agents working in this codebase. Read `.github/copilot-instr
 - **Agents**: `src/agents/` (9 migration agents)
 - **Translation**: `src/translators/` (SQL + Python translators)
 - **Target**: `src/connectors/fabric_client.py` (Fabric deployment)
-- **Tests**: `pytest tests/ --tb=short -q`
+- **Orchestration**: `src/core/orchestrator.py` — DAG execution, checkpoint/resume, selective re-run
+- **Registry**: `src/core/registry.py` — Asset state store with checkpoint operations
+- **Tests**: `pytest tests/ --tb=short -q` (566 tests, 85% coverage)
 - **Python**: 3.10+, async-first, Pydantic v2
 - **Dev plan**: `docs/DEVPLAN.md` — check current sprint before starting work
 - **Agents**: 9 specialized agents in `.github/agents/` — see `docs/AGENTS.md`

@@ -255,7 +255,15 @@ The registry is the **single source of truth** for all migration state.
   │  ├── get_dependencies(id) → List[Asset]    │
   │  └── get_statistics() → Stats              │
   │                                            │
-  │  📊 Reporting:                              │
+  │  � Checkpoint & Resume Operations:         │
+  │  ├── save(path=) — save with override path │
+  │  ├── load(path=) — load with override path │
+  │  ├── save_checkpoint(dir, wave) → Path     │
+  │  ├── get_completed_agents() → set[str]     │
+  │  ├── reset_assets_for_agent(name) → int    │
+  │  └── filter_asset_ids(ids)                 │
+  │                                            │
+  │  �📊 Reporting:                              │
   │  ├── to_json() → str                       │
   │  └── generate_report() → MigrationReport   │
   │                                            │
@@ -601,6 +609,49 @@ agents:
 | **API rate limits** | Exponential backoff + request queuing |
 | **Memory** | Stream processing for large files, don't load all in memory |
 | **Idempotency** | Each agent can re-run safely; registry tracks state |
+| **Interrupted runs** | Checkpoint after each wave; `--resume` to continue |
+| **Selective re-processing** | `--rerun` agent(s) or `--asset-ids` filtering |
+
+---
+
+## 🔄 Checkpoint & Resume
+
+The orchestrator supports interruption recovery and selective re-execution.
+
+### Checkpoint Flow
+
+```
+  Wave 1 (Discovery)  ──▶ checkpoint_wave_0.json
+  Wave 2 (Connectors)  ──▶ checkpoint_wave_1.json
+  Wave 3 (SQL/Python)  ──▶ checkpoint_wave_2.json
+  ...
+  Success ──▶ cleanup all checkpoint files (unless --keep-checkpoints)
+```
+
+### Resume Behavior
+
+When `--resume` is passed:
+
+1. Load the latest registry state from the output directory
+2. Inspect asset states to determine which agents already completed
+3. Skip completed agents, resume from the first incomplete wave
+4. Continue checkpointing after each subsequent wave
+
+### Selective Re-Run
+
+When `--rerun agent_name` is passed:
+
+1. Reset all assets owned by the specified agent(s) back to `DISCOVERED`
+2. Also reset downstream agents (computed via `networkx.descendants()`)
+3. Run the pipeline from the reset point onward
+
+### Asset Filtering
+
+When `--asset-ids "id1,id2"` is passed:
+
+1. Filter the registry to keep only the specified assets
+2. Skip the discovery phase (assets already known)
+3. Run conversion and validation on the filtered set only
 
 ---
 
