@@ -1,0 +1,37 @@
+[
+  {
+    "id": "model_churn_predictor",
+    "name": "churn_predictor",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "PREDICTION",
+    "miniTask": {
+      "taskType": "PREDICTION",
+      "targetVariable": "churned",
+      "predictionType": "BINARY_CLASSIFICATION",
+      "backendType": "PY_MEMORY"
+    },
+    "activeVersion": "v3",
+    "versionTag": {
+      "versionNumber": 3,
+      "lastModifiedBy": {"login": "data_scientist"},
+      "lastModifiedOn": 1711411200000
+    }
+  },
+  {
+    "id": "model_customer_segments",
+    "name": "customer_segments",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "CLUSTERING",
+    "miniTask": {
+      "taskType": "CLUSTERING",
+      "clusterCount": 5,
+      "backendType": "PY_MEMORY"
+    },
+    "activeVersion": "v2",
+    "versionTag": {
+      "versionNumber": 2,
+      "lastModifiedBy": {"login": "data_scientist"},
+      "lastModifiedOn": 1711324800000
+    }
+  }
+]

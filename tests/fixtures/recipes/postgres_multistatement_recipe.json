@@ -1,0 +1,30 @@
+{
+  "name": "compute_monthly_summary",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "sql",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "order_items", "deps": []},
+        {"ref": "inventory_snapshots", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "monthly_summary", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "connection": "postgresql_dw",
+    "engine": "POSTGRESQL"
+  },
+  "payload": "-- Multi-statement SQL: temp tables + final aggregation\nCREATE TEMP TABLE tmp_monthly_orders AS\nSELECT\n  DATE_TRUNC('month', order_date::TIMESTAMP) AS order_month,\n  product_id,\n  SUM(quantity) AS total_qty,\n  SUM(quantity * unit_price) AS total_revenue,\n  COUNT(DISTINCT customer_id) AS unique_customers\nFROM order_items\nWHERE order_date >= NOW() - INTERVAL '12 months'\nGROUP BY DATE_TRUNC('month', order_date::TIMESTAMP), product_id;\n\nCREATE TEMP TABLE tmp_inventory_avg AS\nSELECT\n  product_id,\n  AVG(quantity_on_hand::NUMERIC) AS avg_stock,\n  MIN(quantity_on_hand) AS min_stock,\n  MAX(quantity_on_hand) AS max_stock\nFROM inventory_snapshots\nWHERE snapshot_date >= NOW() - INTERVAL '12 months'\nGROUP BY product_id;\n\nSELECT\n  o.order_month,\n  o.product_id,\n  o.total_qty,\n  o.total_revenue,\n  o.unique_customers,\n  COALESCE(i.avg_stock, 0)::NUMERIC(12,2) AS avg_stock,\n  COALESCE(i.min_stock, 0) AS min_stock,\n  CASE\n    WHEN i.avg_stock > 0 THEN (o.total_qty / i.avg_stock)::NUMERIC(5,2)\n    ELSE NULL\n  END AS stock_turnover_ratio\nFROM tmp_monthly_orders o\nLEFT JOIN tmp_inventory_avg i USING (product_id)\nORDER BY o.order_month DESC, o.total_revenue DESC;",
+  "versionTag": {
+    "versionNumber": 3,
+    "lastModifiedBy": {"login": "analyst"},
+    "lastModifiedOn": 1711497600000
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "enrich_customer_orders",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "python",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "raw_transactions", "deps": []},
+        {"ref": "product_catalog", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "enriched_transactions", "deps": []}
+      ]
+    }
+  },
+  "params": {},
+  "payload": "import dataiku\nimport pandas as pd\nfrom dataiku import SQLExecutor2\n\n# Read datasets using Dataiku SDK\ntransactions = dataiku.Dataset(\"raw_transactions\").get_dataframe()\nproducts = dataiku.Dataset(\"product_catalog\").get_dataframe()\n\n# Merge transaction with product details\nenriched = transactions.merge(\n    products[['product_id', 'product_name', 'category', 'brand']],\n    on='product_id',\n    how='left'\n)\n\n# Execute a lookup query using SQLExecutor\nexecutor = SQLExecutor2(dataset=dataiku.Dataset(\"raw_transactions\"))\nexchange_rates = executor.query_to_df(\n    \"SELECT currency_code, rate_to_usd FROM exchange_rates WHERE effective_date = CURRENT_DATE\"\n)\n\n# Normalize amounts to USD\nenriched = enriched.merge(exchange_rates, left_on='currency', right_on='currency_code', how='left')\nenriched['amount_usd'] = enriched['amount'] * enriched['rate_to_usd'].fillna(1.0)\n\n# Use Dataiku API client for metadata\nclient = dataiku.api_client()\nproject = client.get_project(\"CUSTOMER_ANALYTICS\")\nproject_vars = project.get_variables()\nbase_currency = project_vars['standard'].get('BASE_CURRENCY', 'USD')\n\n# Write results\noutput_ds = dataiku.Dataset(\"enriched_transactions\")\noutput_ds.write_dataframe(enriched)\n\nprint(f\"Enriched {len(enriched)} transactions, base currency: {base_currency}\")\n",
+  "versionTag": {
+    "versionNumber": 4,
+    "lastModifiedBy": {"login": "analyst"},
+    "lastModifiedOn": 1711411200000
+  },
+  "creationTag": {
+    "versionNumber": 1,
+    "lastModifiedBy": {"login": "analyst"},
+    "lastModifiedOn": 1700300000000
+  }
+}

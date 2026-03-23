@@ -1,0 +1,32 @@
+[
+  {
+    "name": "uploads",
+    "type": "Filesystem",
+    "id": "uploads",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "params": {
+      "connection": "filesystem_managed",
+      "path": "/managed_folders/uploads"
+    }
+  },
+  {
+    "name": "model_training_data",
+    "type": "Filesystem",
+    "id": "model_training_data",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "params": {
+      "connection": "filesystem_managed",
+      "path": "/managed_folders/model_training_data"
+    }
+  },
+  {
+    "name": "export_archive",
+    "type": "EC2",
+    "id": "export_archive",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "params": {
+      "connection": "s3_datalake",
+      "path": "/exports/customer_analytics/"
+    }
+  }
+]

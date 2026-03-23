@@ -1,0 +1,29 @@
+{
+  "name": "compute_org_hierarchy",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "sql",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "HR_EMPLOYEES", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "org_hierarchy_flat", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "connection": "oracle_erp_prod",
+    "engine": "ORACLE"
+  },
+  "payload": "-- Oracle hierarchical query: flatten org chart using CONNECT BY\nSELECT\n  EMPLOYEE_ID,\n  FIRST_NAME || ' ' || LAST_NAME AS EMPLOYEE_NAME,\n  MANAGER_ID,\n  LEVEL AS DEPTH,\n  SYS_CONNECT_BY_PATH(LAST_NAME, '/') AS HIERARCHY_PATH,\n  CONNECT_BY_ROOT LAST_NAME AS TOP_MANAGER,\n  CONNECT_BY_ISLEAF AS IS_LEAF,\n  DECODE(LEVEL, 1, 'CEO', 2, 'VP', 3, 'Director', 4, 'Manager', 'Staff') AS TITLE_LEVEL,\n  NVL(DEPARTMENT_NAME, 'Unassigned') AS DEPARTMENT\nFROM HR_EMPLOYEES\nSTART WITH MANAGER_ID IS NULL\nCONNECT BY PRIOR EMPLOYEE_ID = MANAGER_ID\nORDER SIBLINGS BY LAST_NAME",
+  "versionTag": {
+    "versionNumber": 2,
+    "lastModifiedBy": {"login": "hr_analyst"},
+    "lastModifiedOn": 1711152000000
+  }
+}

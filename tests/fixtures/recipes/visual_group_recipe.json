@@ -1,0 +1,35 @@
+{
+  "name": "aggregate_regional_sales",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "group",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "customer_orders_joined", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "regional_sales_summary", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "input": "customer_orders_joined",
+    "groupColumns": ["REGION", "PRODUCT_CATEGORY"],
+    "aggregations": [
+      {"column": "TOTAL_AMOUNT", "function": "SUM", "alias": "total_revenue"},
+      {"column": "TOTAL_AMOUNT", "function": "AVG", "alias": "avg_order_value"},
+      {"column": "ORDER_ID", "function": "COUNT", "alias": "order_count"},
+      {"column": "TOTAL_AMOUNT", "function": "MAX", "alias": "max_order"},
+      {"column": "TOTAL_AMOUNT", "function": "MIN", "alias": "min_order"}
+    ]
+  },
+  "versionTag": {
+    "versionNumber": 3,
+    "lastModifiedBy": {"login": "analyst"},
+    "lastModifiedOn": 1711238400000
+  }
+}

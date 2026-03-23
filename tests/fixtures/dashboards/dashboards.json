@@ -1,0 +1,50 @@
+[
+  {
+    "id": "dash_sales_overview",
+    "name": "Sales Overview",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "pages": [
+      {
+        "id": "page_summary",
+        "title": "Executive Summary",
+        "tiles": [
+          {"type": "INSIGHT", "insightType": "chart", "datasetName": "regional_sales_summary"},
+          {"type": "INSIGHT", "insightType": "kpi", "datasetName": "customer_features"}
+        ]
+      },
+      {
+        "id": "page_details",
+        "title": "Regional Details",
+        "tiles": [
+          {"type": "INSIGHT", "insightType": "pivot_table", "datasetName": "regional_sales_summary"},
+          {"type": "INSIGHT", "insightType": "map", "datasetName": "high_value_customers"}
+        ]
+      }
+    ],
+    "versionTag": {
+      "versionNumber": 4,
+      "lastModifiedBy": {"login": "analyst"},
+      "lastModifiedOn": 1711497600000
+    }
+  },
+  {
+    "id": "dash_customer_health",
+    "name": "Customer Health Monitor",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "pages": [
+      {
+        "id": "page_segments",
+        "title": "Customer Segments",
+        "tiles": [
+          {"type": "INSIGHT", "insightType": "chart", "datasetName": "customer_features"},
+          {"type": "INSIGHT", "insightType": "chart", "datasetName": "customer_features"}
+        ]
+      }
+    ],
+    "versionTag": {
+      "versionNumber": 2,
+      "lastModifiedBy": {"login": "data_scientist"},
+      "lastModifiedOn": 1711584000000
+    }
+  }
+]

@@ -1,0 +1,110 @@
+{
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "graph": {
+    "nodes": {
+      "CRM_CUSTOMERS": {
+        "type": "DATASET",
+        "datasetName": "CRM_CUSTOMERS",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      },
+      "ERP_ORDERS": {
+        "type": "DATASET",
+        "datasetName": "ERP_ORDERS",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      },
+      "WEB_SESSIONS": {
+        "type": "DATASET",
+        "datasetName": "WEB_SESSIONS",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      },
+      "products_catalog": {
+        "type": "DATASET",
+        "datasetName": "products_catalog",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      },
+      "compute_customer_360": {
+        "type": "RECIPE",
+        "recipeName": "compute_customer_360",
+        "recipeType": "sql"
+      },
+      "CUSTOMER_360_VIEW": {
+        "type": "DATASET",
+        "datasetName": "CUSTOMER_360_VIEW",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      },
+      "compute_product_metrics": {
+        "type": "RECIPE",
+        "recipeName": "compute_product_metrics",
+        "recipeType": "sql"
+      },
+      "product_metrics": {
+        "type": "DATASET",
+        "datasetName": "product_metrics",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      },
+      "join_customer_orders": {
+        "type": "RECIPE",
+        "recipeName": "join_customer_orders",
+        "recipeType": "join"
+      },
+      "customer_orders_joined": {
+        "type": "DATASET",
+        "datasetName": "customer_orders_joined",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      },
+      "filter_high_value_customers": {
+        "type": "RECIPE",
+        "recipeName": "filter_high_value_customers",
+        "recipeType": "filter"
+      },
+      "high_value_customers": {
+        "type": "DATASET",
+        "datasetName": "high_value_customers",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      },
+      "aggregate_regional_sales": {
+        "type": "RECIPE",
+        "recipeName": "aggregate_regional_sales",
+        "recipeType": "group"
+      },
+      "regional_sales_summary": {
+        "type": "DATASET",
+        "datasetName": "regional_sales_summary",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      },
+      "build_customer_features": {
+        "type": "RECIPE",
+        "recipeName": "build_customer_features",
+        "recipeType": "python"
+      },
+      "customer_features": {
+        "type": "DATASET",
+        "datasetName": "customer_features",
+        "projectKey": "CUSTOMER_ANALYTICS"
+      }
+    },
+    "edges": [
+      {"from": "CRM_CUSTOMERS", "to": "compute_customer_360"},
+      {"from": "ERP_ORDERS", "to": "compute_customer_360"},
+      {"from": "WEB_SESSIONS", "to": "compute_customer_360"},
+      {"from": "compute_customer_360", "to": "CUSTOMER_360_VIEW"},
+
+      {"from": "products_catalog", "to": "compute_product_metrics"},
+      {"from": "compute_product_metrics", "to": "product_metrics"},
+
+      {"from": "CRM_CUSTOMERS", "to": "join_customer_orders"},
+      {"from": "ERP_ORDERS", "to": "join_customer_orders"},
+      {"from": "join_customer_orders", "to": "customer_orders_joined"},
+
+      {"from": "CUSTOMER_360_VIEW", "to": "filter_high_value_customers"},
+      {"from": "filter_high_value_customers", "to": "high_value_customers"},
+
+      {"from": "customer_orders_joined", "to": "aggregate_regional_sales"},
+      {"from": "aggregate_regional_sales", "to": "regional_sales_summary"},
+
+      {"from": "CUSTOMER_360_VIEW", "to": "build_customer_features"},
+      {"from": "product_metrics", "to": "build_customer_features"},
+      {"from": "build_customer_features", "to": "customer_features"}
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "compute_customer_360",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "sql",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "CRM_CUSTOMERS", "deps": []},
+        {"ref": "ERP_ORDERS", "deps": []},
+        {"ref": "WEB_SESSIONS", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "CUSTOMER_360_VIEW", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "connection": "oracle_erp_prod",
+    "engine": "ORACLE"
+  },
+  "payload": "-- Customer 360 aggregation from Oracle ERP\nSELECT\n  c.CUSTOMER_ID,\n  c.FIRST_NAME || ' ' || c.LAST_NAME AS FULL_NAME,\n  NVL(c.EMAIL, 'unknown@company.com') AS EMAIL,\n  NVL2(c.PHONE, c.PHONE, 'N/A') AS PHONE,\n  DECODE(c.STATUS, 'A', 'Active', 'I', 'Inactive', 'S', 'Suspended', 'Unknown') AS STATUS_LABEL,\n  TO_CHAR(c.CREATED_DATE, 'YYYY-MM-DD') AS CREATED_DATE_STR,\n  TO_DATE(c.LAST_LOGIN, 'DD-MON-YYYY') AS LAST_LOGIN_DATE,\n  SYSDATE AS SNAPSHOT_DATE,\n  NVL(o.ORDER_COUNT, 0) AS TOTAL_ORDERS,\n  NVL(o.TOTAL_REVENUE, 0) AS LIFETIME_REVENUE,\n  NVL(w.SESSION_COUNT, 0) AS WEB_SESSIONS,\n  LISTAGG(o.PRODUCT_CATEGORY, ', ') WITHIN GROUP (ORDER BY o.PRODUCT_CATEGORY) AS PRODUCT_CATEGORIES,\n  ROW_NUMBER() OVER (PARTITION BY c.REGION ORDER BY NVL(o.TOTAL_REVENUE, 0) DESC) AS REGION_RANK\nFROM CRM_CUSTOMERS c\nLEFT JOIN (\n  SELECT\n    CUSTOMER_ID,\n    COUNT(*) AS ORDER_COUNT,\n    SUM(TOTAL_AMOUNT) AS TOTAL_REVENUE,\n    MAX(PRODUCT_CATEGORY) AS PRODUCT_CATEGORY\n  FROM ERP_ORDERS\n  WHERE ORDER_DATE >= ADD_MONTHS(SYSDATE, -12)\n  GROUP BY CUSTOMER_ID\n) o ON c.CUSTOMER_ID = o.CUSTOMER_ID\nLEFT JOIN (\n  SELECT\n    USER_ID AS CUSTOMER_ID,\n    COUNT(*) AS SESSION_COUNT\n  FROM WEB_SESSIONS\n  WHERE SESSION_DATE >= ADD_MONTHS(SYSDATE, -3)\n  GROUP BY USER_ID\n) w ON c.CUSTOMER_ID = w.CUSTOMER_ID\nWHERE c.STATUS != 'D'\nORDER BY LIFETIME_REVENUE DESC",
+  "versionTag": {
+    "versionNumber": 3,
+    "lastModifiedBy": {"login": "admin"},
+    "lastModifiedOn": 1711152000000
+  },
+  "creationTag": {
+    "versionNumber": 1,
+    "lastModifiedBy": {"login": "data_engineer"},
+    "lastModifiedOn": 1700000000000
+  }
+}

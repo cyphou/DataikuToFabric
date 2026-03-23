@@ -1,0 +1,36 @@
+{
+  "name": "compute_product_metrics",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "sql",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "products_catalog", "deps": []},
+        {"ref": "order_items", "deps": []},
+        {"ref": "inventory_snapshots", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "product_metrics", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "connection": "postgresql_dw",
+    "engine": "POSTGRESQL"
+  },
+  "payload": "-- Product performance metrics from PostgreSQL data warehouse\nWITH recent_orders AS (\n  SELECT\n    oi.product_id,\n    oi.quantity,\n    oi.unit_price,\n    oi.quantity * oi.unit_price AS line_total,\n    oi.order_date::DATE AS order_day,\n    oi.discount_pct::NUMERIC(5,2) AS discount_applied\n  FROM order_items oi\n  WHERE oi.order_date >= NOW() - INTERVAL '90 days'\n),\nproduct_stats AS (\n  SELECT\n    product_id,\n    COUNT(*) AS order_count,\n    SUM(quantity) AS total_units_sold,\n    SUM(line_total) AS gross_revenue,\n    AVG(line_total) AS avg_order_value,\n    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY line_total) AS median_order_value,\n    MAX(order_day) AS last_order_date\n  FROM recent_orders\n  GROUP BY product_id\n),\ninventory_current AS (\n  SELECT DISTINCT ON (product_id)\n    product_id,\n    quantity_on_hand,\n    reorder_point,\n    warehouse_location\n  FROM inventory_snapshots\n  ORDER BY product_id, snapshot_date DESC\n)\nSELECT\n  p.product_id,\n  p.product_name,\n  p.category,\n  p.subcategory,\n  p.brand,\n  p.unit_cost::NUMERIC(10,2) AS unit_cost,\n  COALESCE(ps.order_count, 0) AS orders_90d,\n  COALESCE(ps.total_units_sold, 0) AS units_sold_90d,\n  COALESCE(ps.gross_revenue, 0)::NUMERIC(12,2) AS revenue_90d,\n  COALESCE(ps.avg_order_value, 0)::NUMERIC(10,2) AS avg_order_value,\n  COALESCE(ps.median_order_value, 0)::NUMERIC(10,2) AS median_order_value,\n  COALESCE(ic.quantity_on_hand, 0) AS current_stock,\n  COALESCE(ic.reorder_point, 0) AS reorder_point,\n  ic.warehouse_location,\n  CASE\n    WHEN ic.quantity_on_hand <= ic.reorder_point THEN 'REORDER'\n    WHEN ic.quantity_on_hand <= ic.reorder_point * 2 THEN 'LOW'\n    ELSE 'OK'\n  END AS stock_status,\n  p.tags || ARRAY['computed'] AS enriched_tags,\n  NOW() AS computed_at\nFROM products_catalog p\nLEFT JOIN product_stats ps USING (product_id)\nLEFT JOIN inventory_current ic USING (product_id)\nWHERE p.is_active = TRUE\n  AND p.product_name ILIKE '%widget%' OR p.category ILIKE '%electronics%'\nORDER BY revenue_90d DESC NULLS LAST",
+  "versionTag": {
+    "versionNumber": 5,
+    "lastModifiedBy": {"login": "analyst"},
+    "lastModifiedOn": 1711238400000
+  },
+  "creationTag": {
+    "versionNumber": 1,
+    "lastModifiedBy": {"login": "data_engineer"},
+    "lastModifiedOn": 1700100000000
+  }
+}

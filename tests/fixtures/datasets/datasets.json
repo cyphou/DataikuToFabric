@@ -1,0 +1,194 @@
+[
+  {
+    "name": "CRM_CUSTOMERS",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "Oracle",
+    "managed": false,
+    "params": {
+      "connection": "oracle_erp_prod",
+      "table": "CRM.CUSTOMERS",
+      "mode": "table",
+      "partitioningType": "NONE"
+    },
+    "schema": {
+      "columns": [
+        {"name": "CUSTOMER_ID", "type": "bigint", "comment": "Primary key"},
+        {"name": "FIRST_NAME", "type": "string", "maxLength": 100},
+        {"name": "LAST_NAME", "type": "string", "maxLength": 100},
+        {"name": "EMAIL", "type": "string", "maxLength": 255, "nullable": true},
+        {"name": "PHONE", "type": "string", "maxLength": 20, "nullable": true},
+        {"name": "STATUS", "type": "string", "maxLength": 1},
+        {"name": "REGION", "type": "string", "maxLength": 50},
+        {"name": "COUNTRY_CODE", "type": "string", "maxLength": 3},
+        {"name": "CREATED_DATE", "type": "date"},
+        {"name": "LAST_LOGIN", "type": "timestamp", "nullable": true},
+        {"name": "CREDIT_LIMIT", "type": "decimal(12,2)", "nullable": true},
+        {"name": "IS_VIP", "type": "boolean"},
+        {"name": "LOYALTY_POINTS", "type": "int", "nullable": true}
+      ],
+      "userModified": true
+    },
+    "metrics": {
+      "probes": [],
+      "engineConfig": {},
+      "records": 2847563
+    },
+    "versionTag": {
+      "versionNumber": 4,
+      "lastModifiedBy": {"login": "admin"},
+      "lastModifiedOn": 1711152000000
+    }
+  },
+  {
+    "name": "ERP_ORDERS",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "Oracle",
+    "managed": false,
+    "params": {
+      "connection": "oracle_erp_prod",
+      "table": "ERP.ORDERS",
+      "mode": "table",
+      "partitioningType": "NONE"
+    },
+    "schema": {
+      "columns": [
+        {"name": "ORDER_ID", "type": "bigint"},
+        {"name": "CUSTOMER_ID", "type": "bigint"},
+        {"name": "ORDER_DATE", "type": "date"},
+        {"name": "SHIP_DATE", "type": "date", "nullable": true},
+        {"name": "TOTAL_AMOUNT", "type": "decimal(12,2)"},
+        {"name": "DISCOUNT_PCT", "type": "float", "nullable": true},
+        {"name": "STATUS", "type": "string", "maxLength": 20},
+        {"name": "PRODUCT_CATEGORY", "type": "string", "maxLength": 50},
+        {"name": "PAYMENT_METHOD", "type": "string", "maxLength": 30},
+        {"name": "SHIPPING_ADDRESS_ID", "type": "bigint", "nullable": true},
+        {"name": "WAREHOUSE_ID", "type": "int"},
+        {"name": "IS_RETURNED", "type": "boolean"}
+      ],
+      "userModified": true
+    },
+    "metrics": {
+      "probes": [],
+      "engineConfig": {},
+      "records": 18429301
+    },
+    "versionTag": {
+      "versionNumber": 2,
+      "lastModifiedBy": {"login": "admin"},
+      "lastModifiedOn": 1711152000000
+    }
+  },
+  {
+    "name": "products_catalog",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "PostgreSQL",
+    "managed": false,
+    "params": {
+      "connection": "postgresql_dw",
+      "table": "public.products",
+      "mode": "table",
+      "partitioningType": "NONE"
+    },
+    "schema": {
+      "columns": [
+        {"name": "product_id", "type": "int"},
+        {"name": "product_name", "type": "string", "maxLength": 200},
+        {"name": "category", "type": "string", "maxLength": 50},
+        {"name": "subcategory", "type": "string", "maxLength": 50, "nullable": true},
+        {"name": "brand", "type": "string", "maxLength": 100},
+        {"name": "unit_cost", "type": "decimal(10,2)"},
+        {"name": "unit_price", "type": "decimal(10,2)"},
+        {"name": "is_active", "type": "boolean"},
+        {"name": "tags", "type": "array"},
+        {"name": "attributes", "type": "map", "nullable": true},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "updated_at", "type": "timestamp"}
+      ],
+      "userModified": false
+    },
+    "metrics": {
+      "probes": [],
+      "engineConfig": {},
+      "records": 45892
+    },
+    "versionTag": {
+      "versionNumber": 3,
+      "lastModifiedBy": {"login": "data_engineer"},
+      "lastModifiedOn": 1711238400000
+    }
+  },
+  {
+    "name": "WEB_SESSIONS",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "Filesystem",
+    "managed": true,
+    "params": {
+      "connection": "filesystem_managed",
+      "path": "/managed_datasets/WEB_SESSIONS",
+      "formatType": "parquet"
+    },
+    "schema": {
+      "columns": [
+        {"name": "session_id", "type": "string"},
+        {"name": "USER_ID", "type": "bigint"},
+        {"name": "SESSION_DATE", "type": "date"},
+        {"name": "page_views", "type": "int"},
+        {"name": "duration_seconds", "type": "int"},
+        {"name": "device_type", "type": "string", "maxLength": 20},
+        {"name": "browser", "type": "string", "maxLength": 50},
+        {"name": "referrer_url", "type": "string", "nullable": true},
+        {"name": "is_converted", "type": "boolean"}
+      ],
+      "userModified": false
+    },
+    "metrics": {
+      "probes": [],
+      "engineConfig": {},
+      "records": 123456789
+    },
+    "partitioning": {
+      "columns": ["SESSION_DATE"]
+    },
+    "versionTag": {
+      "versionNumber": 1,
+      "lastModifiedBy": {"login": "data_engineer"},
+      "lastModifiedOn": 1711324800000
+    }
+  },
+  {
+    "name": "customer_features",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "Filesystem",
+    "managed": true,
+    "params": {
+      "connection": "filesystem_managed",
+      "path": "/managed_datasets/customer_features",
+      "formatType": "parquet"
+    },
+    "schema": {
+      "columns": [
+        {"name": "CUSTOMER_ID", "type": "bigint"},
+        {"name": "FULL_NAME", "type": "string"},
+        {"name": "EMAIL", "type": "string"},
+        {"name": "TOTAL_ORDERS", "type": "int"},
+        {"name": "LIFETIME_REVENUE", "type": "double"},
+        {"name": "account_age_days", "type": "int"},
+        {"name": "avg_order_value", "type": "double"},
+        {"name": "orders_per_month", "type": "double"},
+        {"name": "rfm_score", "type": "int"},
+        {"name": "segment", "type": "string", "maxLength": 20}
+      ],
+      "userModified": false
+    },
+    "metrics": {
+      "probes": [],
+      "engineConfig": {},
+      "records": 2847563
+    },
+    "versionTag": {
+      "versionNumber": 7,
+      "lastModifiedBy": {"login": "data_scientist"},
+      "lastModifiedOn": 1711411200000
+    }
+  }
+]

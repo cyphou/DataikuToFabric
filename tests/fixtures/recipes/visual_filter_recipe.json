@@ -1,0 +1,32 @@
+{
+  "name": "filter_high_value_customers",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "filter",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "CUSTOMER_360_VIEW", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "high_value_customers", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "input": "CUSTOMER_360_VIEW",
+    "conditions": [
+      {"column": "STATUS_LABEL", "operator": "=", "value": "Active"},
+      {"column": "TOTAL_ORDERS", "operator": ">=", "value": "5"},
+      {"column": "LIFETIME_REVENUE", "operator": ">", "value": "1000"}
+    ]
+  },
+  "versionTag": {
+    "versionNumber": 1,
+    "lastModifiedBy": {"login": "analyst"},
+    "lastModifiedOn": 1711324800000
+  }
+}
