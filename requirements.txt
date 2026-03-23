@@ -1,0 +1,37 @@
+# Dataiku → Fabric Migration Toolkit
+# Core dependencies
+
+# CLI
+click>=8.1.0
+
+# HTTP client (async)
+httpx>=0.25.0
+
+# SQL parsing & transpilation
+sqlglot>=20.0.0
+
+# Notebook format
+nbformat>=5.9.0
+
+# Data handling
+pyarrow>=14.0.0
+pandas>=2.0.0
+
+# Configuration
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+PyYAML>=6.0.1
+
+# Graph (DAG resolution)
+networkx>=3.2.0
+
+# Logging
+structlog>=23.2.0
+
+# Azure authentication
+azure-identity>=1.15.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0

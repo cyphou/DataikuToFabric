@@ -1,0 +1,42 @@
+# Dataiku → Fabric Migration Toolkit
+# Configuration template — copy to config.yaml and fill in your values
+
+# ─── Source: Dataiku ─────────────────────────
+dataiku:
+  url: "https://your-dataiku-instance.company.com"
+  api_key_env: "DATAIKU_API_KEY"          # Name of env var holding the API key
+  project_key: "YOUR_PROJECT_KEY"
+  timeout_seconds: 30
+  max_retries: 3
+
+# ─── Target: Microsoft Fabric ───────────────
+fabric:
+  workspace_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  lakehouse_name: "lh_migrated"
+  warehouse_name: "wh_migrated"
+  auth_method: "azure_cli"                # azure_cli | service_principal | managed_identity
+  tenant_id_env: "AZURE_TENANT_ID"        # Required for service_principal
+  client_id_env: "AZURE_CLIENT_ID"        # Required for service_principal
+
+# ─── Migration Settings ─────────────────────
+migration:
+  target_sql_dialect: "tsql"              # tsql | spark_sql
+  default_storage: "lakehouse"            # lakehouse | warehouse
+  parallel_agents: true
+  max_concurrent_agents: 4
+  fail_fast: false                        # Stop on first failure?
+  output_dir: "./output"
+
+# ─── Orchestrator ────────────────────────────
+orchestrator:
+  max_retries: 3
+  retry_delay_seconds: 5
+  report_format:
+    - html
+    - json
+
+# ─── Logging ─────────────────────────────────
+logging:
+  level: "INFO"                           # DEBUG | INFO | WARNING | ERROR
+  format: "json"                          # json | text
+  file: "./logs/migration.log"

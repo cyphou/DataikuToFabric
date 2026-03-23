@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "dataiku-to-fabric"
+version = "0.1.0"
+description = "Automated migration of Dataiku projects to Microsoft Fabric assets (Lakehouse, Warehouse, Notebooks, Pipelines)"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Dataiku to Fabric Migration Team"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Database",
+]
+keywords = ["dataiku", "fabric", "migration", "lakehouse", "notebook", "pipeline", "tsql", "spark"]
+
+dependencies = [
+    "click>=8.1.0",
+    "httpx>=0.25.0",
+    "sqlglot>=20.0.0",
+    "nbformat>=5.9.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "PyYAML>=6.0.1",
+    "networkx>=3.2.0",
+    "structlog>=23.2.0",
+]
+
+[project.optional-dependencies]
+deploy = [
+    "azure-identity>=1.15.0",
+]
+data = [
+    "pyarrow>=14.0.0",
+    "pandas>=2.0.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+]
+all = [
+    "dataiku-to-fabric[deploy,data,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/dataiku-to-fabric/dataiku-to-fabric"
+Repository = "https://github.com/dataiku-to-fabric/dataiku-to-fabric"
+
+[project.scripts]
+dataiku-to-fabric = "src.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80

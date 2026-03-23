@@ -1,0 +1,114 @@
+{
+  "recipes": [
+    {"name": "compute_orders", "type": "sql"},
+    {"name": "transform_data", "type": "python"},
+    {"name": "join_tables", "type": "join"},
+    {"name": "filter_active", "type": "filter"},
+    {"name": "aggregate_sales", "type": "group"},
+    {"name": "pyspark_etl", "type": "pyspark"},
+    {"name": "prepare_clean", "type": "prepare"}
+  ],
+  "recipe_details": {
+    "compute_orders": {
+      "name": "compute_orders",
+      "type": "sql",
+      "inputs": {"main": {"items": [{"ref": "raw_orders"}, {"ref": "products"}]}},
+      "outputs": {"main": {"items": [{"ref": "computed_orders"}]}},
+      "payload": "SELECT o.*, p.name AS product_name FROM raw_orders o JOIN products p ON o.product_id = p.id WHERE ROWNUM <= 1000"
+    },
+    "transform_data": {
+      "name": "transform_data",
+      "type": "python",
+      "inputs": {"main": {"items": [{"ref": "computed_orders"}]}},
+      "outputs": {"main": {"items": [{"ref": "transformed_data"}]}},
+      "payload": "import dataiku\ndf = dataiku.Dataset('computed_orders').get_dataframe()\ndf['total'] = df['price'] * df['qty']\ndataiku.Dataset('transformed_data').write_dataframe(df)"
+    },
+    "join_tables": {
+      "name": "join_tables",
+      "type": "join",
+      "inputs": {"main": {"items": [{"ref": "orders"}, {"ref": "customers"}]}},
+      "outputs": {"main": {"items": [{"ref": "joined_data"}]}},
+      "params": {
+        "joinType": "LEFT",
+        "conditions": [{"leftColumn": "customer_id", "rightColumn": "id"}]
+      }
+    },
+    "filter_active": {
+      "name": "filter_active",
+      "type": "filter",
+      "inputs": {"main": {"items": [{"ref": "joined_data"}]}},
+      "outputs": {"main": {"items": [{"ref": "active_customers"}]}},
+      "params": {
+        "conditions": [{"column": "status", "operator": "=", "value": "active"}]
+      }
+    },
+    "aggregate_sales": {
+      "name": "aggregate_sales",
+      "type": "group",
+      "inputs": {"main": {"items": [{"ref": "orders"}]}},
+      "outputs": {"main": {"items": [{"ref": "sales_summary"}]}},
+      "params": {
+        "groupColumns": ["region"],
+        "aggregations": [{"column": "amount", "function": "SUM"}]
+      }
+    },
+    "pyspark_etl": {
+      "name": "pyspark_etl",
+      "type": "pyspark",
+      "inputs": {"main": {"items": [{"ref": "raw_data"}]}},
+      "outputs": {"main": {"items": [{"ref": "clean_data"}]}},
+      "payload": "from pyspark.sql import functions as F\ndf = spark.read.parquet('/data/raw')\ndf.filter(F.col('valid')).write.parquet('/data/clean')"
+    },
+    "prepare_clean": {
+      "name": "prepare_clean",
+      "type": "prepare",
+      "inputs": {"main": {"items": [{"ref": "dirty_data"}]}},
+      "outputs": {"main": {"items": [{"ref": "clean_data"}]}},
+      "params": {"steps": [{"type": "RemoveRowsOnEmpty"}, {"type": "FillEmptyWithValue"}]}
+    }
+  },
+  "datasets": [
+    {"name": "raw_orders", "type": "PostgreSQL", "schema": {"columns": [{"name": "id", "type": "int"}, {"name": "product_id", "type": "int"}, {"name": "price", "type": "double"}, {"name": "qty", "type": "int"}]}},
+    {"name": "products", "type": "PostgreSQL", "schema": {"columns": [{"name": "id", "type": "int"}, {"name": "name", "type": "string"}, {"name": "category", "type": "string"}]}},
+    {"name": "computed_orders", "type": "Filesystem", "schema": {"columns": [{"name": "id", "type": "int"}, {"name": "product_name", "type": "string"}, {"name": "price", "type": "double"}]}},
+    {"name": "customers", "type": "Oracle", "schema": {"columns": [{"name": "id", "type": "int"}, {"name": "name", "type": "string"}, {"name": "status", "type": "string"}]}}
+  ],
+  "managed_folders": [
+    {"name": "uploads", "type": "Filesystem", "id": "uploads"},
+    {"name": "exports", "type": "S3", "id": "exports"}
+  ],
+  "connections": {
+    "pg_warehouse": {"type": "PostgreSQL", "params": {"host": "db.example.com", "port": 5432, "db": "warehouse"}},
+    "oracle_erp": {"type": "Oracle", "params": {"host": "oracle.example.com", "port": 1521, "sid": "ERPDB"}},
+    "s3_datalake": {"type": "EC2", "params": {"bucket": "my-datalake"}}
+  },
+  "flow": {
+    "nodes": {
+      "raw_orders": {"type": "DATASET"},
+      "products": {"type": "DATASET"},
+      "compute_orders": {"type": "RECIPE"},
+      "computed_orders": {"type": "DATASET"},
+      "transform_data": {"type": "RECIPE"},
+      "transformed_data": {"type": "DATASET"}
+    },
+    "edges": [
+      {"from": "raw_orders", "to": "compute_orders"},
+      {"from": "products", "to": "compute_orders"},
+      {"from": "compute_orders", "to": "computed_orders"},
+      {"from": "computed_orders", "to": "transform_data"},
+      {"from": "transform_data", "to": "transformed_data"}
+    ]
+  },
+  "scenarios": [
+    {"id": "daily_refresh", "name": "Daily Refresh", "type": "step_based", "triggers": [{"type": "temporal", "params": {"frequency": "daily"}}]},
+    {"id": "on_demand", "name": "On Demand", "type": "step_based", "triggers": []}
+  ],
+  "saved_models": [
+    {"id": "model_churn", "name": "churn_predictor", "type": "PREDICTION"},
+    {"id": "model_cluster", "name": "customer_segments", "type": "CLUSTERING"}
+  ],
+  "dashboards": [
+    {"id": "dash_overview", "name": "Sales Overview"},
+    {"id": "dash_ops", "name": "Operations Dashboard"}
+  ]
+}
