@@ -6,3 +6,17 @@ __pycache__/
 output/
 .env
 logs/
+
+# Build & packaging
+*.egg-info/
+dist/
+build/
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# OS artefacts
+.DS_Store
+Thumbs.db

@@ -58,8 +58,8 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/dataiku-to-fabric/dataiku-to-fabric"
-Repository = "https://github.com/dataiku-to-fabric/dataiku-to-fabric"
+Homepage = "https://github.com/cyphou/DataikuToFabric"
+Repository = "https://github.com/cyphou/DataikuToFabric"
 
 [project.scripts]
 dataiku-to-fabric = "src.cli:cli"

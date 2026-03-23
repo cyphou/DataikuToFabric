@@ -45,6 +45,8 @@ class MigrationConfig(BaseModel):
 class OrchestratorConfig(BaseModel):
     max_retries: int = 3
     retry_delay_seconds: int = 5
+    agent_timeout_seconds: int = 300
+    circuit_breaker_threshold: int = 3
     report_format: list[str] = Field(default_factory=lambda: ["html", "json"])
 
 

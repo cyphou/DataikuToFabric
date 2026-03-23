@@ -107,27 +107,46 @@ class Orchestrator:
         self.context = MigrationContext(config=config, registry=registry)
         self._agents: dict[str, BaseAgent] = {}
         self._results: dict[str, AgentResult] = {}
+        self._consecutive_failures: int = 0
 
     def register_agent(self, agent: BaseAgent) -> None:
         """Register an agent for orchestration."""
         self._agents[agent.name] = agent
 
     async def run_agent(self, agent_name: str) -> AgentResult:
-        """Run a single agent with retry logic."""
+        """Run a single agent with retry logic, timeout, and circuit breaker."""
+        # Circuit breaker: skip if too many consecutive failures
+        cb_threshold = self.config.orchestrator.circuit_breaker_threshold
+        if self._consecutive_failures >= cb_threshold:
+            logger.warning("circuit_breaker_open", agent=agent_name,
+                           consecutive_failures=self._consecutive_failures)
+            result = AgentResult(
+                agent_name=agent_name,
+                status=AgentStatus.ABORTED,
+                errors=[f"Circuit breaker open after {self._consecutive_failures} consecutive failures"],
+            )
+            self._results[agent_name] = result
+            return result
+
         agent = self._agents[agent_name]
         max_retries = self.config.orchestrator.max_retries
         delay = self.config.orchestrator.retry_delay_seconds
+        timeout = self.config.orchestrator.agent_timeout_seconds
 
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info("agent_start", agent=agent_name, attempt=attempt)
-                result = await agent.execute(self.context)
+                result = await asyncio.wait_for(
+                    agent.execute(self.context),
+                    timeout=timeout if timeout > 0 else None,
+                )
                 self._results[agent_name] = result
 
                 if result.status == AgentStatus.COMPLETED:
                     logger.info("agent_completed", agent=agent_name,
                                 processed=result.assets_processed,
                                 converted=result.assets_converted)
+                    self._consecutive_failures = 0  # reset circuit breaker
                     return result
 
                 if result.status == AgentStatus.FAILED and attempt < max_retries:
@@ -136,6 +155,22 @@ class Orchestrator:
                     await asyncio.sleep(delay * attempt)  # exponential backoff
                     continue
 
+                self._consecutive_failures += 1
+                return result
+
+            except asyncio.TimeoutError:
+                logger.error("agent_timeout", agent=agent_name, timeout=timeout,
+                             attempt=attempt)
+                if attempt < max_retries:
+                    await asyncio.sleep(delay * attempt)
+                    continue
+                self._consecutive_failures += 1
+                result = AgentResult(
+                    agent_name=agent_name,
+                    status=AgentStatus.FAILED,
+                    errors=[f"Agent timed out after {timeout}s"],
+                )
+                self._results[agent_name] = result
                 return result
 
             except Exception as e:
@@ -143,17 +178,23 @@ class Orchestrator:
                 if attempt < max_retries:
                     await asyncio.sleep(delay * attempt)
                     continue
-                return AgentResult(
+                self._consecutive_failures += 1
+                result = AgentResult(
                     agent_name=agent_name,
                     status=AgentStatus.FAILED,
                     errors=[str(e)],
                 )
+                self._results[agent_name] = result
+                return result
 
-        return AgentResult(
+        self._consecutive_failures += 1
+        result = AgentResult(
             agent_name=agent_name,
             status=AgentStatus.ABORTED,
             errors=["Max retries exceeded"],
         )
+        self._results[agent_name] = result
+        return result
 
     async def run_agents_parallel(self, agent_names: list[str]) -> list[AgentResult]:
         """Run multiple agents concurrently."""

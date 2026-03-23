@@ -43,7 +43,7 @@
 | **Phase 5** | ~~Dataset + Connection migration — DDL, type mapping, connection templates~~ | **DONE** — 94 tests green (55+39) |
 | **Phase 6** | ~~Flow → Pipeline — DAG builder, trigger mapping, activity references~~ | **DONE** — 65 tests green |
 | **Phase 7** | ~~Validation — deep schema match, row counts, report HTML/JSON~~ | **DONE** — 85 tests green |
-| Phase 8 | Integration testing, perf, packaging, docs | E2E green, pip-installable |
+| Phase 8 | Integration, packaging, CI, Dockerfile, docs, CHANGELOG | All tests green, ≥80% cov, pip-installable, Docker image |
 
 ---
 
@@ -182,17 +182,53 @@ Review flags correctly raised for unconvertible constructs
 
 ---
 
-## Phase 8 — Integration & Release
+## Phase 8 — Integration, Packaging & Release ✅
+
+> Harden the toolkit for production use: end-to-end tests, containerisation, docs, packaging.
+>
+> **Status: DONE** — 512 tests passing, all deliverables shipped.
 
 ### Tasks
 
-| # | Task |
-|---|------|
-| 8.1 | End-to-end integration test |
-| 8.2 | Performance testing (large projects) |
-| 8.3 | Error handling audit |
-| 8.4 | User documentation (setup, troubleshooting) |
-| 8.5 | pip install / Docker packaging |
+| # | Task | File(s) | What |
+|---|------|---------|------|
+| 8.1 | **End-to-end integration test** | `tests/integration/test_e2e_pipeline.py` | Full cycle: mock Dataiku discovery → convert SQL/Python/visual/datasets/connections/flows → validate → report. Uses a synthetic Dataiku project fixture with all asset types. No live APIs — all connectors mocked/stubbed. Gate: single `pytest tests/integration/` invocation covers the whole DAG. |
+| 8.2 | **Large-project performance test** | `tests/integration/test_perf.py` | Generate a synthetic project with 200+ recipes and 50+ datasets. Measure `.run_pipeline()` wall-clock time. Assert <30 s on CI. Profile memory with `tracemalloc`. |
+| 8.3 | **Error handling audit & hardening** | `core/orchestrator.py`, all agents | Add per-agent execution timeout (`asyncio.wait_for`). Add circuit-breaker counter (skip agent after N consecutive failures). Ensure every agent wraps unexpected exceptions into `AgentResult(FAILED)` with diagnostic details. |
+| 8.4 | **Dockerfile + .dockerignore** | `Dockerfile`, `.dockerignore` | Multi-stage build: `python:3.12-slim` → install from wheel → expose `dataiku-to-fabric` entry point. Health-check via `--version`. `.dockerignore` for `output/`, `logs/`, `.git/`, `__pycache__/`. |
+| 8.5 | **GitHub Actions CI** | `.github/workflows/ci.yml` | Matrix: Python 3.10 / 3.12 / 3.13. Steps: install deps → `pytest --cov` (fail under 80%) → build wheel → (on tag) publish to PyPI via trusted publisher. |
+| 8.6 | **pip-installable wheel** | `pyproject.toml`, `MANIFEST.in` | Add `MANIFEST.in` to include templates, config template. Verify `pip install .` + `dataiku-to-fabric --version` works in a clean venv. |
+| 8.7 | **User documentation** | `docs/SETUP.md`, `docs/TROUBLESHOOTING.md` | Setup guide (prerequisites, install, config, first run). Troubleshooting (common errors, connectivity, auth). Add to README TOC. |
+| 8.8 | **Update .gitignore** | `.gitignore` | Add `*.egg-info/`, `dist/`, `build/`, `.venv/`, `venv/`, `.DS_Store`, `htmlcov/`. |
+| 8.9 | **CHANGELOG & release template** | `CHANGELOG.md` | Document Phases 1-7 retroactively. Add `[Unreleased]` section for ongoing changes. Follow Keep-a-Changelog format. |
+| 8.10 | **README refresh** | `README.md` | Update status table to reflect all phases done. Add badges (tests, coverage, PyPI version). Add "Quickstart" snippet with real commands. |
+
+### Gate
+
+```
+pytest tests/ tests/integration/ — all green, ≥80% coverage
+pip install . && dataiku-to-fabric --version → 0.1.0
+docker build -t dataiku-to-fabric . && docker run --rm dataiku-to-fabric --version
+docs/SETUP.md + docs/TROUBLESHOOTING.md reviewed
+```
+
+### Execution order
+
+```
+8.8  .gitignore cleanup               (no deps)
+8.4  Dockerfile + .dockerignore        (no deps)
+8.6  MANIFEST.in + wheel verify        (no deps)
+8.3  Error handling hardening          (no deps)
+  ↓
+8.1  E2E integration test             (needs 8.3 — hardened agents)
+8.2  Perf test                        (needs 8.1 — same fixture infra)
+  ↓
+8.5  GitHub Actions CI                (needs 8.1 + 8.6 — tests + wheel)
+  ↓
+8.7  User docs                        (needs all code stable)
+8.9  CHANGELOG                        (needs all code stable)
+8.10 README refresh                   (needs all done)
+```
 
 ---
 

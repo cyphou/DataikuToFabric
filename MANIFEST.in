@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+include requirements.txt
+include config/config.template.yaml
+
+recursive-include templates *
+recursive-include src *.py

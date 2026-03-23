@@ -1,5 +1,9 @@
 # 🚀 Dataiku → Microsoft Fabric Migration Toolkit
 
+[![CI](https://github.com/cyphou/DataikuToFabric/actions/workflows/ci.yml/badge.svg)](https://github.com/cyphou/DataikuToFabric/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > **Automated, agent-driven migration platform** to convert Dataiku projects into native Microsoft Fabric assets — SQL, Notebooks, Pipelines, Lakehouses & Power BI.
 
 ---
@@ -14,6 +18,7 @@
 | 4 | [Migration Scope](#-migration-scope) | Dataiku → Fabric mapping |
 | 5 | [Getting Started](#-getting-started) | Setup & prerequisites |
 | 6 | [Project Structure](#-project-structure) | Folder layout |
+| 7 | [Docs](#-documentation) | Setup, troubleshooting, changelog |
 
 ---
 
@@ -174,23 +179,27 @@ Each Dataiku asset type has unique semantics. A dedicated agent per asset type e
 ### Quick Start
 
 ```bash
-# 1. Clone & setup
-cd DataikuToFabric
-pip install -r requirements.txt
+# 1. Install
+pip install "dataiku-to-fabric[all]"
+#    — or from source —
+git clone https://github.com/cyphou/DataikuToFabric.git
+cd DataikuToFabric && pip install -e ".[all]"
 
 # 2. Configure
 cp config/config.template.yaml config/config.yaml
 # Edit config.yaml with your Dataiku & Fabric credentials
 
 # 3. Discover assets
-python -m src.cli discover --project MY_DATAIKU_PROJECT
+dataiku-to-fabric discover --project MY_DATAIKU_PROJECT
 
 # 4. Run full migration
-python -m src.cli migrate --project MY_DATAIKU_PROJECT --target MY_FABRIC_WORKSPACE
+dataiku-to-fabric migrate --project MY_DATAIKU_PROJECT --target MY_FABRIC_WORKSPACE
 
 # 5. Validate
-python -m src.cli validate --project MY_DATAIKU_PROJECT
+dataiku-to-fabric validate --project MY_DATAIKU_PROJECT
 ```
+
+> 📖 Full setup instructions → [docs/SETUP.md](docs/SETUP.md) · Troubleshooting → [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
 ---
 
@@ -199,29 +208,33 @@ python -m src.cli validate --project MY_DATAIKU_PROJECT
 ```
 DataikuToFabric/
 ├── 📄 README.md                      ← You are here
+├── 📄 CHANGELOG.md                   ← Version history
 ├── 📄 requirements.txt               ← Python dependencies
+├── 📄 pyproject.toml                 ← Packaging & tool config
+├── 📄 Dockerfile                     ← Container build
+├── 📄 MANIFEST.in                    ← sdist includes
+│
 ├── ⚙️ config/
 │   ├── config.template.yaml          ← Configuration template
 │   └── config.yaml                   ← Local config (git-ignored)
 │
 ├── 📖 docs/
 │   ├── AGENTS.md                     ← Agent specifications
-│   ├── DEVPLAN.md                    ← Development plan & roadmap
 │   ├── ARCHITECTURE.md               ← Core system design
-│   └── diagrams/                     ← Architecture diagrams
+│   ├── DEVPLAN.md                    ← Development plan & roadmap
+│   ├── SETUP.md                      ← Installation & first-run guide
+│   └── TROUBLESHOOTING.md            ← Common errors & fixes
 │
 ├── 🐍 src/
 │   ├── __init__.py
 │   ├── cli.py                        ← CLI entry point
 │   ├── core/
-│   │   ├── __init__.py
-│   │   ├── orchestrator.py           ← 🎛️ Orchestration agent
+│   │   ├── orchestrator.py           ← 🎛️ DAG-based orchestrator
 │   │   ├── registry.py               ← 📦 Asset registry
 │   │   ├── config.py                 ← ⚙️ Config loader
 │   │   └── logger.py                 ← 📋 Structured logging
 │   │
 │   ├── agents/
-│   │   ├── __init__.py
 │   │   ├── base_agent.py             ← Abstract agent interface
 │   │   ├── discovery_agent.py        ← 🔍 Discovery agent
 │   │   ├── sql_migration_agent.py    ← 📝 SQL migration agent
@@ -233,57 +246,66 @@ DataikuToFabric/
 │   │   └── validation_agent.py       ← ✅ Validation agent
 │   │
 │   ├── connectors/
-│   │   ├── __init__.py
 │   │   ├── dataiku_client.py         ← Dataiku API client
 │   │   └── fabric_client.py          ← Fabric REST API client
 │   │
 │   ├── translators/
-│   │   ├── __init__.py
 │   │   ├── sql_translator.py         ← SQL dialect translation
 │   │   ├── oracle_to_tsql.py         ← Oracle → T-SQL rules
 │   │   ├── postgres_to_tsql.py       ← PostgreSQL → T-SQL rules
 │   │   └── python_to_notebook.py     ← Python → .ipynb converter
 │   │
 │   └── models/
-│       ├── __init__.py
 │       ├── asset.py                  ← Asset data model
 │       ├── migration_state.py        ← Migration state machine
 │       └── report.py                 ← Report data model
 │
 ├── 🧪 tests/
-│   ├── __init__.py
-│   ├── test_discovery.py
-│   ├── test_sql_migration.py
-│   ├── test_python_migration.py
-│   ├── test_validation.py
-│   └── fixtures/
-│       ├── sample_sql_recipe.json
-│       ├── sample_python_recipe.json
-│       └── sample_flow.json
+│   ├── test_*.py                     ← Unit tests (489+)
+│   ├── fixtures/                     ← Test fixtures & samples
+│   └── integration/
+│       ├── test_e2e_pipeline.py      ← End-to-end pipeline tests
+│       └── test_perf.py              ← Performance / scale tests
 │
-└── 📝 templates/
-    ├── notebook_template.ipynb       ← Base Fabric notebook template
-    ├── pipeline_template.json        ← Base pipeline template
-    └── warehouse_table.sql           ← DDL template
+├── 📝 templates/
+│   ├── notebook_template.ipynb       ← Base Fabric notebook template
+│   ├── pipeline_template.json        ← Base pipeline template
+│   └── warehouse_table.sql           ← DDL template
+│
+└── 🔧 .github/
+    ├── workflows/ci.yml              ← GitHub Actions CI
+    ├── agents/                       ← Multi-agent definitions
+    └── copilot-instructions.md       ← Copilot project rules
 ```
 
 ---
 
 ## 📊 Status
 
-| Phase | Status | Target |
-|-------|--------|--------|
-| 📖 Planning & Architecture | 🟢 In Progress | Sprint 0 |
-| 🔍 Discovery Agent | ⚪ Not Started | Sprint 1 |
-| 📝 SQL Migration Agent | ⚪ Not Started | Sprint 1-2 |
-| 🐍 Python Migration Agent | ⚪ Not Started | Sprint 2 |
-| 📊 Visual Recipe Agent | ⚪ Not Started | Sprint 2-3 |
-| 🗄️ Dataset Migration Agent | ⚪ Not Started | Sprint 3 |
-| 🔄 Flow → Pipeline Agent | ⚪ Not Started | Sprint 3-4 |
-| ✅ Validation Agent | ⚪ Not Started | Sprint 4 |
-| 🎛️ Orchestrator + CLI | ⚪ Not Started | Sprint 4-5 |
-| 🧪 Integration Testing | ⚪ Not Started | Sprint 5 |
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 1 — Core Infrastructure | 🟢 Done | CLI, config, registry, asset model, base agent, logging |
+| 2 — Discovery & Connectors | 🟢 Done | Discovery agent, Dataiku + Fabric API clients |
+| 3 — SQL Translation | 🟢 Done | Oracle + PostgreSQL → T-SQL / Spark SQL via sqlglot |
+| 4 — Python & Visual Recipes | 🟢 Done | Python → Notebook converter, visual recipe → SQL |
+| 5 — Dataset, Connection & Pipeline | 🟢 Done | Dataset, connection mapper, flow → pipeline agents |
+| 6 — Orchestration & CLI | 🟢 Done | DAG orchestrator, retry logic, full CLI |
+| 7 — Validation | 🟢 Done | Schema, SQL, notebook, pipeline, connection validation + reports |
+| 8 — Integration & Packaging | 🟢 Done | E2E tests, perf tests, Docker, CI, docs, CHANGELOG |
 
 ---
 
-> 📖 **Next:** See [docs/AGENTS.md](docs/AGENTS.md) for full agent specs, [docs/DEVPLAN.md](docs/DEVPLAN.md) for the dev roadmap, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the core system design.
+## 📖 Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [docs/SETUP.md](docs/SETUP.md) | Installation, configuration & first run |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common errors & solutions |
+| [docs/AGENTS.md](docs/AGENTS.md) | Full agent specifications |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Core system design |
+| [docs/DEVPLAN.md](docs/DEVPLAN.md) | Development roadmap |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+
+---
+
+> 📖 **Next:** See [docs/SETUP.md](docs/SETUP.md) to get started, [docs/AGENTS.md](docs/AGENTS.md) for full agent specs, and [docs/DEVPLAN.md](docs/DEVPLAN.md) for the dev roadmap.
