@@ -6,12 +6,87 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
+import networkx as nx
+
 from src.agents.base_agent import AgentResult, AgentStatus, BaseAgent
 from src.core.config import AppConfig
 from src.core.logger import get_logger
 from src.core.registry import AssetRegistry
 
 logger = get_logger(__name__)
+
+# ── Default agent execution order ─────────────────────────────
+# Each tuple is (agent_name, [dependencies])
+DEFAULT_AGENT_GRAPH: list[tuple[str, list[str]]] = [
+    ("discovery", []),
+    ("connection_mapper", ["discovery"]),
+    ("dataset_migrator", ["discovery"]),
+    ("sql_converter", ["discovery"]),
+    ("python_converter", ["discovery"]),
+    ("visual_converter", ["discovery"]),
+    ("pipeline_builder", ["sql_converter", "python_converter", "visual_converter"]),
+    ("validator", ["dataset_migrator", "connection_mapper", "pipeline_builder"]),
+]
+
+
+def build_agent_dag(
+    agent_names: list[str],
+    graph_spec: list[tuple[str, list[str]]] | None = None,
+) -> nx.DiGraph:
+    """Build a DAG of agent execution dependencies.
+
+    Only includes agents that are in ``agent_names``. Dependencies
+    on missing agents are silently dropped.
+    """
+    spec = graph_spec or DEFAULT_AGENT_GRAPH
+    available = set(agent_names)
+    dag = nx.DiGraph()
+
+    for name, deps in spec:
+        if name not in available:
+            continue
+        dag.add_node(name)
+        for dep in deps:
+            if dep in available:
+                dag.add_edge(dep, name)
+
+    return dag
+
+
+def get_execution_waves(dag: nx.DiGraph) -> list[list[str]]:
+    """Return agents grouped into parallel execution waves.
+
+    Each wave contains agents whose dependencies have all been
+    satisfied by previous waves.
+    """
+    waves: list[list[str]] = []
+    remaining = set(dag.nodes())
+
+    while remaining:
+        # Find nodes whose predecessors are all done
+        ready = []
+        for node in remaining:
+            preds = set(dag.predecessors(node))
+            if preds.issubset(set().union(*(waves or [[]]))):
+                # All predecessors in previous waves
+                ready.append(node)
+
+        # More robust: check all predecessors are NOT in remaining
+        ready = [
+            n for n in remaining
+            if all(p not in remaining for p in dag.predecessors(n))
+        ]
+
+        if not ready:
+            # Shouldn't happen with a DAG, but guard against cycles
+            logger.warning("agent_dag_deadlock", remaining=list(remaining))
+            waves.append(sorted(remaining))
+            break
+
+        waves.append(sorted(ready))
+        remaining -= set(ready)
+
+    return waves
 
 
 @dataclass
@@ -108,43 +183,39 @@ class Orchestrator:
         return agent_results
 
     async def run_pipeline(self, agent_names: list[str] | None = None) -> dict[str, AgentResult]:
-        """Run the full migration pipeline in dependency order."""
+        """Run the full migration pipeline using DAG-based execution waves.
+
+        Agents are executed in topological order based on their dependency
+        graph. Independent agents within the same wave run in parallel
+        (if ``parallel_agents`` is enabled in config).
+        """
         if agent_names is None:
             agent_names = list(self._agents.keys())
 
-        # Phase 1: Discovery (always first)
-        if "discovery" in agent_names:
-            await self.run_agent("discovery")
-            if self.config.migration.fail_fast and self._results.get("discovery", AgentResult(
-                agent_name="discovery", status=AgentStatus.FAILED
-            )).status == AgentStatus.FAILED:
-                return self._results
+        # Build the execution DAG and compute waves
+        dag = build_agent_dag(agent_names)
+        waves = get_execution_waves(dag)
 
-        # Phase 2: Connection mapping + Dataset migration (parallel)
-        phase2 = [n for n in ["connection_mapper", "dataset_migrator"] if n in agent_names]
-        if phase2:
-            if self.config.migration.parallel_agents:
-                await self.run_agents_parallel(phase2)
+        logger.info("pipeline_start", waves=[[n for n in w] for w in waves],
+                     total_agents=len(agent_names))
+
+        for wave_idx, wave in enumerate(waves):
+            logger.info("wave_start", wave=wave_idx + 1, agents=wave)
+
+            if len(wave) > 1 and self.config.migration.parallel_agents:
+                await self.run_agents_parallel(wave)
             else:
-                for name in phase2:
+                for name in wave:
                     await self.run_agent(name)
 
-        # Phase 3: Recipe conversion (parallel)
-        phase3 = [n for n in ["sql_converter", "python_converter", "visual_converter"] if n in agent_names]
-        if phase3:
-            if self.config.migration.parallel_agents:
-                await self.run_agents_parallel(phase3)
-            else:
-                for name in phase3:
-                    await self.run_agent(name)
-
-        # Phase 4: Flow → Pipeline
-        if "pipeline_builder" in agent_names:
-            await self.run_agent("pipeline_builder")
-
-        # Phase 5: Validation (always last)
-        if "validator" in agent_names:
-            await self.run_agent("validator")
+            # Check fail-fast after each wave
+            if self.config.migration.fail_fast:
+                for name in wave:
+                    result = self._results.get(name)
+                    if result and result.status == AgentStatus.FAILED:
+                        logger.warning("fail_fast_abort", failed_agent=name, wave=wave_idx + 1)
+                        self.registry.save()
+                        return self._results
 
         self.registry.save()
         return self._results

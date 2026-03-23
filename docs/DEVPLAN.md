@@ -1,7 +1,7 @@
 # Development Plan — Dataiku to Fabric Migration Toolkit
 
 > Phased roadmap from scaffold to production-ready migration tool.
-> **Last updated:** 2026-03-23 (Phase 5)
+> **Last updated:** 2026-03-23 (Phase 6)
 
 ---
 
@@ -12,7 +12,7 @@
 | Documentation | **Done** | README, AGENTS, ARCHITECTURE, DEVPLAN |
 | Core (config, registry, logger) | **Done** | Pydantic config, JSON registry, structlog |
 | Base agent contract | **Done** | ABC with execute/validate/rollback |
-| Orchestrator | Scaffold | Hard-coded phases, no dynamic DAG |
+| Orchestrator | **Done** | DAG-based wave execution, parallel dispatch, retry logic |
 | CLI | **Done** | Commands defined, connectors wired |
 | Dataiku client | **Done** | Pagination, auth, all endpoints, streaming export, row count |
 | Fabric client | **Done** | Azure Identity auth, async polling, OneLake upload, warehouse DDL |
@@ -25,10 +25,10 @@
 | Python migration agent | **Done** | Full convert+validate, notebook generation |
 | Visual recipe agent | **Done** | 10 generators: join, vstack, group, filter, window, sort, distinct, topn, pivot, prepare |
 | Dataset agent | **Done** | Type mapping with precision, DDL (Lakehouse+Warehouse), partitioning, schema comparison, export manifests |
-| Flow pipeline agent | Scaffold | networkx DAG, basic pipeline JSON |
+| Flow pipeline agent | **Done** | DAG builder, topological sort, 6 activity types, 6 trigger types, converted asset refs |
 | Connection agent | **Done** | 12 connection types, gateway/shortcut/pipeline templates, credential mapping |
 | Validation agent | Scaffold | Basic state checks, no deep validation |
-| Tests | **339 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), conftest fixtures |
+| Tests | **404 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), conftest fixtures |
 
 ---
 
@@ -41,7 +41,7 @@
 | **Phase 3** | ~~SQL translation — fix agent, Oracle+PG tests (30+30), multi-stmt~~ | **DONE** — 88 tests green (33+31+24) |
 | **Phase 4** | ~~Python + Visual recipes — expand SDK patterns, Prepare recipe~~ | **DONE** — 93 tests green (32+17+16+40) |
 | **Phase 5** | ~~Dataset + Connection migration — DDL, type mapping, connection templates~~ | **DONE** — 94 tests green (55+39) |
-| Phase 6 | Flow → Pipeline — DAG builder, trigger mapping, JSON deploy | Pipeline JSON validates |
+| **Phase 6** | ~~Flow → Pipeline — DAG builder, trigger mapping, activity references~~ | **DONE** — 65 tests green |
 | Phase 7 | Validation — deep schema match, row counts, report HTML/JSON | Validation report generated |
 | Phase 8 | Integration testing, perf, packaging, docs | E2E green, pip-installable |
 
