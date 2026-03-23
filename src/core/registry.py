@@ -86,22 +86,117 @@ class AssetRegistry:
 
     # ── Persistence ───────────────────────────────────────────
 
-    def save(self) -> None:
-        """Save the registry to disk."""
-        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
+    def save(self, path: Path | None = None) -> None:
+        """Save the registry to disk.
+
+        Args:
+            path: Override the default path (used for checkpoint files).
+        """
+        target = path or self.registry_path
+        target.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "project_key": self.project_key,
             "saved_at": datetime.now(timezone.utc).isoformat(),
             "statistics": self.get_statistics(),
             "assets": [a.model_dump(mode="json") for a in self._assets.values()],
         }
-        self.registry_path.write_text(json.dumps(data, indent=2, default=str))
+        target.write_text(json.dumps(data, indent=2, default=str))
 
-    def load(self) -> None:
-        """Load the registry from disk."""
-        if not self.registry_path.exists():
+    def load(self, path: Path | None = None) -> None:
+        """Load the registry from disk.
+
+        Args:
+            path: Override the default path (used for checkpoint files).
+        """
+        target = path or self.registry_path
+        if not target.exists():
             return
-        data = json.loads(self.registry_path.read_text())
+        data = json.loads(target.read_text())
         for item in data.get("assets", []):
             asset = Asset.model_validate(item)
             self._assets[asset.id] = asset
+
+    def save_checkpoint(self, checkpoint_dir: Path, wave_index: int) -> Path:
+        """Save a checkpoint file for the given wave.
+
+        Returns the path to the checkpoint file.
+        """
+        checkpoint_path = checkpoint_dir / f"checkpoint_wave_{wave_index}.json"
+        self.save(path=checkpoint_path)
+        return checkpoint_path
+
+    def get_completed_agents(self) -> set[str]:
+        """Return the set of agent names whose assets are all past DISCOVERED.
+
+        An agent is considered completed if (a) it registered results that
+        moved assets beyond DISCOVERED, or (b) there are no assets of that
+        agent's type still in DISCOVERED state. This is used by the resume
+        logic to decide which agents to skip.
+        """
+        # Map asset types to responsible agent names
+        agent_type_map: dict[str, list[str]] = {
+            "discovery": [],  # discovery is done once assets exist
+            "sql_converter": [AssetType.RECIPE_SQL.value],
+            "python_converter": [AssetType.RECIPE_PYTHON.value],
+            "visual_converter": [AssetType.RECIPE_VISUAL.value],
+            "dataset_migrator": [AssetType.DATASET.value],
+            "connection_mapper": [AssetType.CONNECTION.value],
+            "pipeline_builder": [AssetType.FLOW.value, AssetType.SCENARIO.value],
+            "validator": [],   # validator is special — runs on everything
+        }
+
+        completed: set[str] = set()
+
+        # Discovery is complete if the registry has any assets
+        if self._assets:
+            completed.add("discovery")
+
+        for agent_name, type_values in agent_type_map.items():
+            if agent_name in ("discovery", "validator"):
+                continue
+            if not type_values:
+                continue
+            assets_for_agent = [
+                a for a in self._assets.values()
+                if a.type.value in type_values
+            ]
+            if not assets_for_agent:
+                # No assets of this type → agent has nothing to do, treat as done
+                completed.add(agent_name)
+                continue
+            # Agent is complete if ALL its assets are beyond DISCOVERED
+            all_past_discovered = all(
+                a.state != MigrationState.DISCOVERED for a in assets_for_agent
+            )
+            if all_past_discovered:
+                completed.add(agent_name)
+
+        return completed
+
+    def reset_assets_for_agent(self, agent_name: str) -> int:
+        """Reset all assets belonging to an agent back to DISCOVERED.
+
+        Returns the number of assets reset.
+        """
+        agent_type_map: dict[str, list[str]] = {
+            "sql_converter": [AssetType.RECIPE_SQL.value],
+            "python_converter": [AssetType.RECIPE_PYTHON.value],
+            "visual_converter": [AssetType.RECIPE_VISUAL.value],
+            "dataset_migrator": [AssetType.DATASET.value],
+            "connection_mapper": [AssetType.CONNECTION.value],
+            "pipeline_builder": [AssetType.FLOW.value, AssetType.SCENARIO.value],
+        }
+        type_values = agent_type_map.get(agent_name, [])
+        count = 0
+        for asset in self._assets.values():
+            if asset.type.value in type_values and asset.state != MigrationState.DISCOVERED:
+                asset.state = MigrationState.DISCOVERED
+                asset.errors.clear()
+                count += 1
+        return count
+
+    def filter_asset_ids(self, asset_ids: set[str]) -> None:
+        """Keep only the specified asset IDs, remove everything else."""
+        self._assets = {
+            aid: a for aid, a in self._assets.items() if aid in asset_ids
+        }

@@ -104,15 +104,33 @@ def discover(project: str, config: str):
 @click.option("--target", "-t", required=True, help="Fabric workspace name or ID")
 @click.option("--config", "-c", default="config/config.yaml", help="Config file path")
 @click.option("--agents", "-a", multiple=True, help="Specific agents to run (default: all)")
-def migrate(project: str, target: str, config: str, agents: tuple):
+@click.option("--resume", is_flag=True, default=False, help="Resume from last checkpoint, skip completed agents")
+@click.option("--rerun", multiple=True, help="Force re-run specific agents (resets their assets)")
+@click.option("--asset-ids", default=None, help="Comma-separated asset IDs to process")
+@click.option("--keep-checkpoints", is_flag=True, default=False, help="Keep checkpoint files after completion")
+def migrate(project: str, target: str, config: str, agents: tuple,
+            resume: bool, rerun: tuple, asset_ids: str | None, keep_checkpoints: bool):
     """Run full migration from Dataiku to Fabric."""
     click.echo(f"Migrating project: {project} -> {target}")
     orch = _build_orchestrator(config)
     orch.config.dataiku.project_key = project
     orch.config.fabric.workspace_id = target
 
+    if resume:
+        orch.registry.load()
+        click.echo("Resuming from checkpoint...")
+
     agent_names = list(agents) if agents else None
-    results = asyncio.run(orch.run_pipeline(agent_names))
+    rerun_list = list(rerun) if rerun else None
+    asset_id_set = set(asset_ids.split(",")) if asset_ids else None
+
+    results = asyncio.run(orch.run_pipeline(
+        agent_names,
+        resume=resume,
+        rerun_agents=rerun_list,
+        asset_ids=asset_id_set,
+        keep_checkpoints=keep_checkpoints,
+    ))
 
     for name, result in results.items():
         click.echo(f"  {name}: {result.status.value} "

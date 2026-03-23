@@ -1,7 +1,7 @@
 # Development Plan — Dataiku to Fabric Migration Toolkit
 
 > Phased roadmap from scaffold to production-ready migration tool.
-> **Last updated:** 2026-03-23 (Phase 8 done — planning Phases 9–18)
+> **Last updated:** 2026-03-23 (Phase 9 done)
 
 ---
 
@@ -28,7 +28,7 @@
 | Flow pipeline agent | **Done** | DAG builder, topological sort, 6 activity types, 6 trigger types, converted asset refs |
 | Connection agent | **Done** | 12 connection types, gateway/shortcut/pipeline templates, credential mapping |
 | Validation agent | **Done** | Schema comparison, row count, SQL syntax, notebook structure, pipeline integrity, connection mapping, review flags |
-| Tests | **489 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), conftest fixtures |
+| Tests | **566 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), checkpoint/resume (33), CLI (15), logger (6), E2E (19), perf (4), conftest fixtures |
 
 ---
 
@@ -44,7 +44,7 @@
 | **Phase 6** | ~~Flow → Pipeline — DAG builder, trigger mapping~~ | **DONE** — 65 tests |
 | **Phase 7** | ~~Validation — schema match, row counts, HTML/JSON~~ | **DONE** — 85 tests |
 | **Phase 8** | ~~Integration, packaging, CI, Dockerfile, docs~~ | **DONE** — 512 tests |
-| Phase 9 | Checkpoint, resume & selective re-run | Pipeline survives restart, asset-level retry |
+| Phase 9 | ~~Checkpoint, resume & selective re-run~~ | **DONE** — 566 tests, 85% cov |
 | Phase 10 | CLI hardening — dry-run, progress, interactive | CLI test suite, all flags work |
 | Phase 11 | Data migration — export, upload, row-count verify | Round-trip data for sample dataset |
 | Phase 12 | Fabric deployment — agents call create APIs | Notebook + pipeline + DDL deployed to workspace |
@@ -242,9 +242,11 @@ docs/SETUP.md + docs/TROUBLESHOOTING.md reviewed
 
 ---
 
-## Phase 9 — Checkpoint, Resume & Selective Re-run
+## Phase 9 — Checkpoint, Resume & Selective Re-run ✅
 
 > Make the pipeline crash-safe: persist state between waves, skip completed work on restart, re-run individual agents or assets.
+>
+> **Status: DONE** — 566 tests passing, 85% coverage.
 
 ### Tasks
 

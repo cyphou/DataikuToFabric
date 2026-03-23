@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import networkx as nx
@@ -108,6 +109,7 @@ class Orchestrator:
         self._agents: dict[str, BaseAgent] = {}
         self._results: dict[str, AgentResult] = {}
         self._consecutive_failures: int = 0
+        self._checkpoints: list[Path] = []
 
     def register_agent(self, agent: BaseAgent) -> None:
         """Register an agent for orchestration."""
@@ -223,22 +225,73 @@ class Orchestrator:
 
         return agent_results
 
-    async def run_pipeline(self, agent_names: list[str] | None = None) -> dict[str, AgentResult]:
+    async def run_pipeline(
+        self,
+        agent_names: list[str] | None = None,
+        *,
+        resume: bool = False,
+        rerun_agents: list[str] | None = None,
+        asset_ids: set[str] | None = None,
+        checkpoint_dir: Path | None = None,
+        keep_checkpoints: bool = False,
+    ) -> dict[str, AgentResult]:
         """Run the full migration pipeline using DAG-based execution waves.
 
-        Agents are executed in topological order based on their dependency
-        graph. Independent agents within the same wave run in parallel
-        (if ``parallel_agents`` is enabled in config).
+        Args:
+            agent_names: Specific agents to run (default: all registered).
+            resume: If True, skip agents whose assets are already completed.
+            rerun_agents: Agent names to force-rerun (resets their assets first).
+            asset_ids: If set, only process these specific asset IDs.
+            checkpoint_dir: Directory for checkpoint files (default: output/).
+            keep_checkpoints: Keep checkpoint files after successful completion.
         """
         if agent_names is None:
             agent_names = list(self._agents.keys())
 
+        # ── Resume: load checkpoint and detect completed agents ──
+        skip_agents: set[str] = set()
+        if resume:
+            completed = self.registry.get_completed_agents()
+            skip_agents = completed & set(agent_names)
+            if skip_agents:
+                logger.info("resume_skipping", agents=sorted(skip_agents))
+
+        # ── Selective re-run: reset assets for specified agents ──
+        if rerun_agents:
+            for agent_name in rerun_agents:
+                count = self.registry.reset_assets_for_agent(agent_name)
+                logger.info("rerun_reset", agent=agent_name, assets_reset=count)
+                skip_agents.discard(agent_name)
+                # Also force-run downstream agents
+                dag = build_agent_dag(agent_names)
+                if agent_name in dag:
+                    for downstream in nx.descendants(dag, agent_name):
+                        self.registry.reset_assets_for_agent(downstream)
+                        skip_agents.discard(downstream)
+
+        # ── Asset-level filter ──
+        if asset_ids:
+            self.registry.filter_asset_ids(asset_ids)
+            # Discovery is not needed if we already have filtered assets
+            skip_agents.add("discovery")
+
         # Build the execution DAG and compute waves
-        dag = build_agent_dag(agent_names)
+        active_agents = [n for n in agent_names if n not in skip_agents]
+        dag = build_agent_dag(active_agents)
         waves = get_execution_waves(dag)
 
+        # Pre-fill results for skipped agents
+        for name in skip_agents:
+            self._results[name] = AgentResult(
+                agent_name=name,
+                status=AgentStatus.COMPLETED,
+                details={"skipped": True, "reason": "resumed_from_checkpoint"},
+            )
+
+        ckpt_dir = checkpoint_dir or Path(self.config.migration.output_dir)
         logger.info("pipeline_start", waves=[[n for n in w] for w in waves],
-                     total_agents=len(agent_names))
+                     total_agents=len(active_agents),
+                     skipped_agents=sorted(skip_agents))
 
         for wave_idx, wave in enumerate(waves):
             logger.info("wave_start", wave=wave_idx + 1, agents=wave)
@@ -248,6 +301,10 @@ class Orchestrator:
             else:
                 for name in wave:
                     await self.run_agent(name)
+
+            # Save checkpoint after each wave
+            ckpt = self.registry.save_checkpoint(ckpt_dir, wave_idx + 1)
+            self._checkpoints.append(ckpt)
 
             # Check fail-fast after each wave
             if self.config.migration.fail_fast:
@@ -259,7 +316,22 @@ class Orchestrator:
                         return self._results
 
         self.registry.save()
+
+        # Cleanup intermediate checkpoints on success
+        if not keep_checkpoints:
+            self._cleanup_checkpoints()
+
         return self._results
+
+    def _cleanup_checkpoints(self) -> None:
+        """Remove intermediate checkpoint files."""
+        for ckpt in self._checkpoints:
+            try:
+                if ckpt.exists():
+                    ckpt.unlink()
+            except OSError:
+                pass
+        self._checkpoints.clear()
 
     def get_results(self) -> dict[str, AgentResult]:
         """Get all agent execution results."""

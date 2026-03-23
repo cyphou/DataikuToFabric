@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Registry checkpointing after each orchestrator wave (`save_checkpoint`)
+- Pipeline resume via `--resume` flag (skip completed agents on restart)
+- Selective agent re-run via `--rerun <agent>` (resets + downstream cascade)
+- Selective asset processing via `--asset-ids <id1,id2>` filter
+- Checkpoint cleanup on successful pipeline completion (`--keep-checkpoints` to retain)
+- `get_completed_agents()` — detects which agents have finished based on asset states
+- `reset_assets_for_agent()` — resets agent assets to DISCOVERED for re-processing
+- `filter_asset_ids()` — keeps only specified assets in the registry
+- CLI test suite (15 tests) covering all commands and flags
+- Logger test suite (6 tests) covering setup and format options
 - GitHub Actions CI with Python 3.10 / 3.12 / 3.13 matrix
 - Dockerfile and .dockerignore for containerised deployment
 - MANIFEST.in for proper sdist/wheel packaging
