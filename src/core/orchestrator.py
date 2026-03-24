@@ -234,6 +234,8 @@ class Orchestrator:
         asset_ids: set[str] | None = None,
         checkpoint_dir: Path | None = None,
         keep_checkpoints: bool = False,
+        on_agent_start: Any | None = None,
+        on_agent_done: Any | None = None,
     ) -> dict[str, AgentResult]:
         """Run the full migration pipeline using DAG-based execution waves.
 
@@ -297,10 +299,20 @@ class Orchestrator:
             logger.info("wave_start", wave=wave_idx + 1, agents=wave)
 
             if len(wave) > 1 and self.config.migration.parallel_agents:
+                for name in wave:
+                    if on_agent_start:
+                        on_agent_start(name, wave_idx + 1)
                 await self.run_agents_parallel(wave)
+                for name in wave:
+                    if on_agent_done:
+                        on_agent_done(name, self._results.get(name))
             else:
                 for name in wave:
+                    if on_agent_start:
+                        on_agent_start(name, wave_idx + 1)
                     await self.run_agent(name)
+                    if on_agent_done:
+                        on_agent_done(name, self._results.get(name))
 
             # Save checkpoint after each wave
             ckpt = self.registry.save_checkpoint(ckpt_dir, wave_idx + 1)
@@ -336,3 +348,93 @@ class Orchestrator:
     def get_results(self) -> dict[str, AgentResult]:
         """Get all agent execution results."""
         return dict(self._results)
+
+    def get_execution_plan(
+        self,
+        agent_names: list[str] | None = None,
+        *,
+        resume: bool = False,
+    ) -> dict[str, Any]:
+        """Return the execution plan without running anything (dry-run).
+
+        Returns a dict with waves, agent info, and asset counts.
+        """
+        if agent_names is None:
+            agent_names = list(self._agents.keys())
+
+        skip_agents: set[str] = set()
+        if resume:
+            completed = self.registry.get_completed_agents()
+            skip_agents = completed & set(agent_names)
+
+        active_agents = [n for n in agent_names if n not in skip_agents]
+        dag = build_agent_dag(active_agents)
+        waves = get_execution_waves(dag)
+
+        # Gather asset counts per agent type
+        from src.models.asset import AssetType
+        agent_type_map: dict[str, list[str]] = {
+            "discovery": [],
+            "sql_converter": [AssetType.RECIPE_SQL.value],
+            "python_converter": [AssetType.RECIPE_PYTHON.value],
+            "visual_converter": [AssetType.RECIPE_VISUAL.value],
+            "dataset_migrator": [AssetType.DATASET.value],
+            "connection_mapper": [AssetType.CONNECTION.value],
+            "pipeline_builder": [AssetType.FLOW.value, AssetType.SCENARIO.value],
+            "validator": [],
+        }
+
+        wave_plans = []
+        for wave_idx, wave in enumerate(waves):
+            wave_info = []
+            for agent_name in wave:
+                agent = self._agents.get(agent_name)
+                type_values = agent_type_map.get(agent_name, [])
+                asset_count = len([
+                    a for a in self.registry.get_all()
+                    if a.type.value in type_values
+                ]) if type_values else len(self.registry.get_all())
+                wave_info.append({
+                    "agent": agent_name,
+                    "description": agent.description if agent else "",
+                    "asset_count": asset_count,
+                })
+            wave_plans.append({"wave": wave_idx + 1, "agents": wave_info})
+
+        return {
+            "project_key": self.registry.project_key,
+            "total_agents": len(active_agents),
+            "skipped_agents": sorted(skip_agents),
+            "waves": wave_plans,
+            "parallel": self.config.migration.parallel_agents,
+            "fail_fast": self.config.migration.fail_fast,
+            "max_retries": self.config.orchestrator.max_retries,
+            "timeout_seconds": self.config.orchestrator.agent_timeout_seconds,
+        }
+
+    def get_status(self) -> dict[str, Any]:
+        """Return the current migration status from the registry."""
+        stats = self.registry.get_statistics()
+        agent_status = {}
+        for name, result in self._results.items():
+            agent_status[name] = {
+                "status": result.status.value,
+                "processed": result.assets_processed,
+                "converted": result.assets_converted,
+                "failed": result.assets_failed,
+                "errors": result.errors,
+                "review_flags": result.review_flags,
+            }
+
+        # Check for last checkpoint
+        ckpt_dir = Path(self.config.migration.output_dir)
+        checkpoints = sorted(ckpt_dir.glob("checkpoint_wave_*.json")) if ckpt_dir.exists() else []
+        last_checkpoint = str(checkpoints[-1]) if checkpoints else None
+
+        return {
+            "project_key": self.registry.project_key,
+            "registry_path": str(self.registry.registry_path),
+            "last_checkpoint": last_checkpoint,
+            "assets": stats,
+            "agents": agent_status,
+        }

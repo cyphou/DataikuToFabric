@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `--dry-run` flag on `migrate` — prints execution plan (waves, agents, asset counts) without running
+- Rich progress bars during migration (per-agent wave tracking with spinner, bar, elapsed time)
+- `--quiet` / `-q` flag to suppress progress bars
+- `interactive` command — guided migration wizard with prompts for project, workspace, agent selection
+- `config validate` subcommand — validates YAML syntax, Pydantic schema, env vars, timeout settings
+- `status` command — shows current migration state from registry (assets by type/state, agent results, checkpoints)
+- `--output-format` / `-f` flag (table/json/yaml) on discover, migrate, validate, config validate, status
+- `validate_config()` function in `core/config.py` — returns structured issues list with error/warning levels
+- `get_execution_plan()` method on Orchestrator — dry-run plan with agent descriptions and asset counts
+- `get_status()` method on Orchestrator — migration state summary from registry and results
+- Progress callbacks (`on_agent_start`, `on_agent_done`) in `run_pipeline()` for live UI updates
+- CLI test suite expanded to 53 tests (was 15) — covers all new commands, flags, and output formats
+- `_format_output()` and `_format_table()` output formatting helpers
+- `rich>=13.7.0` dependency for progress bars
+- Comprehensive `examples/` directory with real input/output migration samples
 - Registry checkpointing after each orchestrator wave (`save_checkpoint`)
 - Pipeline resume via `--resume` flag (skip completed agents on restart)
 - Selective agent re-run via `--rerun <agent>` (resets + downstream cascade)

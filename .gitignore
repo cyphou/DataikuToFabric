@@ -13,6 +13,7 @@ logs/
 dist/
 build/
 htmlcov/
+.coverage
 
 # Virtual environments
 .venv/

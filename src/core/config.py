@@ -76,3 +76,50 @@ def load_config(config_path: str | Path = "config/config.yaml") -> AppConfig:
         raw = yaml.safe_load(f)
 
     return AppConfig.model_validate(raw)
+
+
+def validate_config(config_path: str | Path) -> list[dict[str, str]]:
+    """Validate a config file and return a list of issues (empty = valid).
+
+    Each issue is ``{"level": "error"|"warning", "message": "…"}``.
+    """
+    issues: list[dict[str, str]] = []
+    path = Path(config_path)
+
+    if not path.exists():
+        issues.append({"level": "error", "message": f"Config file not found: {path}"})
+        return issues
+
+    try:
+        with open(path) as f:
+            raw = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        issues.append({"level": "error", "message": f"YAML parse error: {e}"})
+        return issues
+
+    if not isinstance(raw, dict):
+        issues.append({"level": "error", "message": "Config root must be a mapping"})
+        return issues
+
+    # Schema validation via Pydantic
+    try:
+        cfg = AppConfig.model_validate(raw)
+    except Exception as e:
+        issues.append({"level": "error", "message": f"Schema validation failed: {e}"})
+        return issues
+
+    # Warnings for common problems
+    if not os.environ.get(cfg.dataiku.api_key_env):
+        issues.append({"level": "warning", "message": f"Env var {cfg.dataiku.api_key_env} is not set"})
+
+    if cfg.orchestrator.agent_timeout_seconds < 30:
+        issues.append({"level": "warning", "message": "Agent timeout < 30s may cause premature failures"})
+
+    if cfg.migration.max_concurrent_agents > 8:
+        issues.append({"level": "warning", "message": "max_concurrent_agents > 8 may overwhelm APIs"})
+
+    output_dir = Path(cfg.migration.output_dir)
+    if not output_dir.exists():
+        issues.append({"level": "warning", "message": f"Output directory does not exist: {output_dir}"})
+
+    return issues

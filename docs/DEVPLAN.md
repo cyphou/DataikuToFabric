@@ -1,7 +1,7 @@
 # Development Plan — Dataiku to Fabric Migration Toolkit
 
 > Phased roadmap from scaffold to production-ready migration tool.
-> **Last updated:** 2026-03-23 (Phase 9 done)
+> **Last updated:** 2026-03-24 (Phase 10 done)
 
 ---
 
@@ -13,7 +13,7 @@
 | Core (config, registry, logger) | **Done** | Pydantic config, JSON registry, structlog |
 | Base agent contract | **Done** | ABC with execute/validate/rollback |
 | Orchestrator | **Done** | DAG-based wave execution, parallel dispatch, retry logic |
-| CLI | **Done** | Commands defined, connectors wired |
+| CLI | **Done** | Commands, --dry-run, progress bars, interactive, config validate, status, --output-format |
 | Dataiku client | **Done** | Pagination, auth, all endpoints, streaming export, row count |
 | Fabric client | **Done** | Azure Identity auth, async polling, OneLake upload, warehouse DDL |
 | Discovery agent | **Done** | All 10 asset types, dependency resolution |
@@ -28,7 +28,7 @@
 | Flow pipeline agent | **Done** | DAG builder, topological sort, 6 activity types, 6 trigger types, converted asset refs |
 | Connection agent | **Done** | 12 connection types, gateway/shortcut/pipeline templates, credential mapping |
 | Validation agent | **Done** | Schema comparison, row count, SQL syntax, notebook structure, pipeline integrity, connection mapping, review flags |
-| Tests | **566 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), checkpoint/resume (33), CLI (15), logger (6), E2E (19), perf (4), conftest fixtures |
+| Tests | **659 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), checkpoint/resume (33), CLI (53), logger (6), E2E (19), perf (4), conftest fixtures |
 
 ---
 
@@ -45,7 +45,7 @@
 | **Phase 7** | ~~Validation — schema match, row counts, HTML/JSON~~ | **DONE** — 85 tests |
 | **Phase 8** | ~~Integration, packaging, CI, Dockerfile, docs~~ | **DONE** — 512 tests |
 | Phase 9 | ~~Checkpoint, resume & selective re-run~~ | **DONE** — 566 tests, 85% cov |
-| Phase 10 | CLI hardening — dry-run, progress, interactive | CLI test suite, all flags work |
+| Phase 10 | ~~CLI hardening — dry-run, progress, interactive~~ | **DONE** — 659 tests, 53 CLI tests |
 | Phase 11 | Data migration — export, upload, row-count verify | Round-trip data for sample dataset |
 | Phase 12 | Fabric deployment — agents call create APIs | Notebook + pipeline + DDL deployed to workspace |
 | Phase 13 | Security — Key Vault, credential rotation, audit | Zero secrets in logs or config files |
@@ -285,9 +285,11 @@ migrate --asset-ids X,Y → only those assets processed
 
 ---
 
-## Phase 10 — CLI Hardening
+## Phase 10 — CLI Hardening ✅
 
 > Make the CLI production-ready: dry-run, progress feedback, interactive prompts, config validation, full test coverage.
+>
+> **Status: DONE** — 659 tests passing, 53 CLI tests.
 
 ### Tasks
 
