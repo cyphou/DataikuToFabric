@@ -1,0 +1,84 @@
+{
+  "name": "clean_customer_data",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "prepare",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "raw_customer_import", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "cleaned_customers", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "input": "raw_customer_import",
+    "steps": [
+      {
+        "type": "delete_column",
+        "column": "internal_id",
+        "comment": "Remove internal tracking column"
+      },
+      {
+        "type": "rename",
+        "column": "cust_nm",
+        "newName": "customer_name"
+      },
+      {
+        "type": "rename",
+        "column": "eml_addr",
+        "newName": "email_address"
+      },
+      {
+        "type": "uppercase",
+        "column": "country_code"
+      },
+      {
+        "type": "lowercase",
+        "column": "email_address"
+      },
+      {
+        "type": "fill_empty",
+        "column": "phone_number",
+        "value": "N/A"
+      },
+      {
+        "type": "find_replace",
+        "column": "address_line_1",
+        "find": "  ",
+        "replace": " "
+      },
+      {
+        "type": "type_change",
+        "column": "zip_code",
+        "newType": "VARCHAR(10)"
+      },
+      {
+        "type": "formula",
+        "expression": "[first_name] + ' ' + [last_name]",
+        "outputColumn": "full_name"
+      },
+      {
+        "type": "filter_rows",
+        "column": "status",
+        "operator": "!=",
+        "value": "DELETED"
+      },
+      {
+        "type": "split_column",
+        "column": "full_address",
+        "delimiter": ","
+      }
+    ]
+  },
+  "versionTag": {
+    "versionNumber": 6,
+    "lastModifiedBy": {"login": "data_steward"},
+    "lastModifiedOn": 1711584000000
+  }
+}

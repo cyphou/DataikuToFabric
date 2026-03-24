@@ -1,0 +1,37 @@
+{
+  "name": "join_customer_orders",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "join",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "CRM_CUSTOMERS", "deps": []},
+        {"ref": "ERP_ORDERS", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "customer_orders_joined", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "joinType": "LEFT",
+    "leftInput": "CRM_CUSTOMERS",
+    "rightInput": "ERP_ORDERS",
+    "conditions": [
+      {"leftColumn": "CUSTOMER_ID", "rightColumn": "CUSTOMER_ID"}
+    ],
+    "selectedColumns": {
+      "left": ["CUSTOMER_ID", "FIRST_NAME", "LAST_NAME", "EMAIL", "REGION"],
+      "right": ["ORDER_ID", "ORDER_DATE", "TOTAL_AMOUNT", "PRODUCT_CATEGORY"]
+    }
+  },
+  "versionTag": {
+    "versionNumber": 2,
+    "lastModifiedBy": {"login": "analyst"},
+    "lastModifiedOn": 1711152000000
+  }
+}

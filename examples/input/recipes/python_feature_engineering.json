@@ -1,0 +1,32 @@
+{
+  "name": "build_customer_features",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "python",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "CUSTOMER_360_VIEW", "deps": []},
+        {"ref": "product_metrics", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "customer_features", "deps": []}
+      ]
+    }
+  },
+  "params": {},
+  "payload": "import dataiku\nimport pandas as pd\nimport numpy as np\nfrom datetime import datetime, timedelta\n\n# Read input datasets\ncustomer_df = dataiku.Dataset(\"CUSTOMER_360_VIEW\").get_dataframe()\nproduct_df = dataiku.Dataset(\"product_metrics\").get_dataframe()\n\n# Get project variables\nproject_vars = dataiku.get_custom_variables()\nlookback_days = int(project_vars.get('LOOKBACK_DAYS', 90))\nmin_orders = int(project_vars.get('MIN_ORDERS', 1))\n\n# Feature engineering\ncustomer_df['account_age_days'] = (datetime.now() - pd.to_datetime(customer_df['CREATED_DATE_STR'])).dt.days\ncustomer_df['avg_order_value'] = customer_df['LIFETIME_REVENUE'] / customer_df['TOTAL_ORDERS'].replace(0, np.nan)\ncustomer_df['orders_per_month'] = customer_df['TOTAL_ORDERS'] / (customer_df['account_age_days'] / 30.0)\n\n# RFM scoring\ncustomer_df['recency_score'] = pd.qcut(customer_df['account_age_days'], q=5, labels=[5,4,3,2,1])\ncustomer_df['frequency_score'] = pd.qcut(customer_df['TOTAL_ORDERS'].rank(method='first'), q=5, labels=[1,2,3,4,5])\ncustomer_df['monetary_score'] = pd.qcut(customer_df['LIFETIME_REVENUE'].rank(method='first'), q=5, labels=[1,2,3,4,5])\n\ncustomer_df['rfm_score'] = (\n    customer_df['recency_score'].astype(int) +\n    customer_df['frequency_score'].astype(int) +\n    customer_df['monetary_score'].astype(int)\n)\n\n# Segment assignment\ndef assign_segment(row):\n    if row['rfm_score'] >= 12:\n        return 'Champion'\n    elif row['rfm_score'] >= 9:\n        return 'Loyal'\n    elif row['rfm_score'] >= 6:\n        return 'Potential'\n    elif row['rfm_score'] >= 3:\n        return 'At Risk'\n    else:\n        return 'Hibernating'\n\ncustomer_df['segment'] = customer_df.apply(assign_segment, axis=1)\n\n# Save enriched features to managed folder for model training\nfolder = dataiku.Folder(\"model_training_data\")\nfolder_path = folder.get_path()\ncustomer_df.to_parquet(f\"{folder_path}/customer_features.parquet\", index=False)\n\n# Write output dataset\noutput = dataiku.Dataset(\"customer_features\")\noutput.write_dataframe(customer_df)\n\nprint(f\"Processed {len(customer_df)} customers, {customer_df['segment'].value_counts().to_dict()}\")\n",
+  "versionTag": {
+    "versionNumber": 7,
+    "lastModifiedBy": {"login": "data_scientist"},
+    "lastModifiedOn": 1711324800000
+  },
+  "creationTag": {
+    "versionNumber": 1,
+    "lastModifiedBy": {"login": "data_scientist"},
+    "lastModifiedOn": 1700200000000
+  }
+}

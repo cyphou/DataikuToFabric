@@ -1,0 +1,16 @@
+{
+  "connection_id": "filesystem_managed",
+  "dataiku_type": "filesystem",
+  "fabric_type": "Lakehouse_Files",
+  "category": "local",
+  "notes": "Upload files to Lakehouse Files section",
+  "workspace_id": "your-workspace-id",
+  "required_secrets": [
+    "username",
+    "password"
+  ],
+  "manual_steps": [
+    "Upload local files to Lakehouse Files section",
+    "Convert to Delta tables if structured data"
+  ]
+}

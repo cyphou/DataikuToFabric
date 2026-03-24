@@ -1,0 +1,32 @@
+{
+  "name": "pivot_sales_by_quarter",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "pivot",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "regional_sales_summary", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "sales_pivot_table", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "input": "regional_sales_summary",
+    "pivotColumn": "PRODUCT_CATEGORY",
+    "valueColumn": "total_revenue",
+    "aggregation": "SUM",
+    "pivotValues": ["Electronics", "Clothing", "Food", "Home"],
+    "groupColumns": ["REGION"]
+  },
+  "versionTag": {
+    "versionNumber": 1,
+    "lastModifiedBy": {"login": "analyst"},
+    "lastModifiedOn": 1711497600000
+  }
+}

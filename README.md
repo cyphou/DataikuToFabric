@@ -17,8 +17,9 @@
 | 3 | [Agents](#-agent-catalog) | All migration agents |
 | 4 | [Migration Scope](#-migration-scope) | Dataiku → Fabric mapping |
 | 5 | [Getting Started](#-getting-started) | Setup & prerequisites |
-| 6 | [Project Structure](#-project-structure) | Folder layout |
-| 7 | [Docs](#-documentation) | Setup, troubleshooting, changelog |
+| 6 | [Examples](#-examples) | Real input/output migration samples |
+| 7 | [Project Structure](#-project-structure) | Folder layout |
+| 8 | [Docs](#-documentation) | Setup, troubleshooting, changelog |
 
 ---
 
@@ -203,7 +204,25 @@ dataiku-to-fabric validate --project MY_DATAIKU_PROJECT
 
 ---
 
-## 📂 Project Structure
+## � Examples
+
+The [`examples/`](examples/) directory contains a **complete, real migration walkthrough** for a sample **CUSTOMER_ANALYTICS** Dataiku project — including source assets and the actual output produced by each agent.
+
+| Folder | Contents |
+|--------|----------|
+| [`examples/input/`](examples/input/) | Dataiku project export — 9 recipes, 5 datasets, 6 connections, 3 scenarios, 1 flow |
+| [`examples/output/sql/`](examples/output/sql/) | 8 converted SQL files (Oracle → T-SQL, PostgreSQL → T-SQL, visual recipe → SQL) |
+| [`examples/output/notebooks/`](examples/output/notebooks/) | PySpark notebook generated from a Python recipe |
+| [`examples/output/ddl/`](examples/output/ddl/) | 5 DDL scripts (Warehouse + Lakehouse / Delta) |
+| [`examples/output/pipelines/`](examples/output/pipelines/) | Fabric Data Pipeline JSON + 3 trigger definitions |
+| [`examples/output/connections/`](examples/output/connections/) | 6 mapped connection configs (Gateway, OneLake, Lakehouse) |
+| [`examples/output/reports/`](examples/output/reports/) | Validation report with per-agent results and review flags |
+
+> 📖 Full walkthrough → [examples/README.md](examples/README.md) · Sample config → [examples/sample_config.yaml](examples/sample_config.yaml)
+
+---
+
+## �📂 Project Structure
 
 ```
 DataikuToFabric/
@@ -292,7 +311,7 @@ DataikuToFabric/
 | 6 — Orchestration & CLI | 🟢 Done | DAG orchestrator, retry logic, full CLI |
 | 7 — Validation | 🟢 Done | Schema, SQL, notebook, pipeline, connection validation + reports |
 | 8 — Integration & Packaging | 🟢 Done | E2E tests, perf tests, Docker, CI, docs, CHANGELOG |
-| 9 — Checkpoint & Resume | 🟢 Done | Checkpoint/resume, selective re-run, asset filtering (566 tests, 85% cov) |
+| 9 — Checkpoint & Resume | 🟢 Done | Checkpoint/resume, selective re-run, asset filtering (621 tests, 85% cov) |
 
 ---
 
@@ -306,6 +325,7 @@ DataikuToFabric/
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Core system design |
 | [docs/DEVPLAN.md](docs/DEVPLAN.md) | Development roadmap |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [examples/README.md](examples/README.md) | Migration examples & walkthrough |
 
 ---
 

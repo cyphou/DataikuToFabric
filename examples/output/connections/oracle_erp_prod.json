@@ -1,0 +1,26 @@
+{
+  "connection_id": "oracle_erp_prod",
+  "dataiku_type": "oracle",
+  "fabric_type": "OnPremisesDataGateway",
+  "category": "database",
+  "notes": "Requires on-premises data gateway installation and configuration",
+  "workspace_id": "your-workspace-id",
+  "required_secrets": [
+    "username",
+    "password"
+  ],
+  "manual_steps": [
+    "Install and configure On-Premises Data Gateway",
+    "Register gateway in Fabric workspace",
+    "Create gateway data source with appropriate credentials",
+    "Test the connection through the gateway"
+  ],
+  "gateway_config": {
+    "connection_string": "Data Source=oracle-erp.prod.internal.company.com:1521/<DATABASE>;",
+    "auth_type": "Basic",
+    "required_secrets": [
+      "username",
+      "password"
+    ]
+  }
+}

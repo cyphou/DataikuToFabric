@@ -1,0 +1,11 @@
+{
+  "connection_id": "azure_blob_staging",
+  "dataiku_type": "azure",
+  "fabric_type": "OneLake_Shortcut",
+  "category": "cloud_storage",
+  "notes": "Azure connection - configure as OneLake shortcut",
+  "manual_steps": [
+    "Create OneLake shortcut to cloud storage",
+    "Configure authentication"
+  ]
+}

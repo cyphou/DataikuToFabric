@@ -1,0 +1,11 @@
+{
+  "connection_id": "s3_datalake",
+  "dataiku_type": "ec2",
+  "fabric_type": "OneLake_Shortcut",
+  "category": "cloud_storage",
+  "notes": "EC2 connection - configure as OneLake shortcut",
+  "manual_steps": [
+    "Create OneLake shortcut to cloud storage",
+    "Configure authentication"
+  ]
+}

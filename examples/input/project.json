@@ -1,0 +1,19 @@
+{
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "name": "Customer Analytics Pipeline",
+  "description": "End-to-end customer analytics: ingest from Oracle ERP & PostgreSQL warehouse, build 360° customer view, feature engineering, segmentation",
+  "owner": "data_team",
+  "creationTag": {
+    "lastModifiedBy": { "login": "admin" },
+    "lastModifiedOn": 1700000000000
+  },
+  "tags": ["production", "customer", "analytics", "migration-ready"],
+  "projectStatus": "ACTIVE",
+  "metrics": {
+    "total_recipes": 9,
+    "total_datasets": 5,
+    "total_connections": 6,
+    "total_scenarios": 3,
+    "total_managed_folders": 3
+  }
+}

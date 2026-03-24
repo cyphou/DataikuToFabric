@@ -1,0 +1,11 @@
+{
+  "triggers": [],
+  "steps": [
+    {
+      "name": "Full project rebuild",
+      "type": "build_flowitem",
+      "target": ""
+    }
+  ],
+  "review_flags": []
+}

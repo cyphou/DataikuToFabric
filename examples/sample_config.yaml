@@ -1,0 +1,47 @@
+# Dataiku → Fabric Migration — Example Configuration
+# Copy to config/config.yaml and edit with your values
+
+# ─── Source: Dataiku DSS Instance ────────────
+dataiku:
+  url: "https://dss.acme-corp.com"         # Your Dataiku DSS URL
+  api_key_env: "DATAIKU_API_KEY"            # Env var name holding your API key
+  project_key: "CUSTOMER_ANALYTICS"         # Dataiku project to migrate
+  timeout_seconds: 30
+  max_retries: 3
+
+# ─── Target: Microsoft Fabric Workspace ─────
+fabric:
+  workspace_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  lakehouse_name: "lh_customer_analytics"   # Target Lakehouse
+  warehouse_name: "wh_customer_analytics"   # Target Warehouse
+  auth_method: "azure_cli"                  # azure_cli | service_principal | managed_identity
+
+  # Required only for service_principal auth:
+  # tenant_id_env: "AZURE_TENANT_ID"
+  # client_id_env: "AZURE_CLIENT_ID"
+  # client_secret_env: "AZURE_CLIENT_SECRET"
+
+# ─── Migration Settings ─────────────────────
+migration:
+  target_sql_dialect: "tsql"                # tsql | spark_sql
+  default_storage: "lakehouse"              # lakehouse | warehouse
+  parallel_agents: true                     # Run independent agents concurrently
+  max_concurrent_agents: 4
+  fail_fast: false                          # Stop on first failure?
+  output_dir: "./output"                    # Where converted files are written
+
+# ─── Orchestrator ────────────────────────────
+orchestrator:
+  max_retries: 3
+  retry_delay_seconds: 5
+  agent_timeout_seconds: 300
+  circuit_breaker_threshold: 3              # Skip agent after N consecutive failures
+  report_format:
+    - html
+    - json
+
+# ─── Logging ─────────────────────────────────
+logging:
+  level: "INFO"                             # DEBUG | INFO | WARNING | ERROR
+  format: "json"                            # json | console
+  file: "./logs/migration.log"

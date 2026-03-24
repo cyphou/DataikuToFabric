@@ -1,0 +1,147 @@
+[
+  {
+    "id": "daily_customer_refresh",
+    "name": "Daily Customer Refresh",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "step_based",
+    "active": true,
+    "params": {
+      "notifyOnFailure": true,
+      "notifyOnWarning": false
+    },
+    "triggers": [
+      {
+        "type": "temporal",
+        "active": true,
+        "params": {
+          "frequency": "Daily",
+          "startFrom": 1690000000000,
+          "hour": 6,
+          "minute": 0,
+          "timezone": "UTC",
+          "daysOfWeek": ["MON", "TUE", "WED", "THU", "FRI"]
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "Build CUSTOMER_360_VIEW",
+        "type": "build_flowitem",
+        "params": {
+          "builds": [{"type": "DATASET", "itemId": "CUSTOMER_360_VIEW"}],
+          "jobType": "RECURSIVE_BUILD"
+        }
+      },
+      {
+        "name": "Build customer_features",
+        "type": "build_flowitem",
+        "params": {
+          "builds": [{"type": "DATASET", "itemId": "customer_features"}],
+          "jobType": "NON_RECURSIVE_FORCED_BUILD"
+        }
+      },
+      {
+        "name": "Clear staging cache",
+        "type": "exec_sql",
+        "params": {
+          "connection": "postgresql_dw",
+          "sql": "TRUNCATE TABLE staging.temp_customer_cache"
+        }
+      },
+      {
+        "name": "Send completion report",
+        "type": "send_report",
+        "params": {
+          "mail": {
+            "to": "data-team@company.com",
+            "subject": "Daily Customer Refresh Complete"
+          }
+        }
+      }
+    ],
+    "versionTag": {
+      "versionNumber": 5,
+      "lastModifiedBy": {"login": "data_engineer"},
+      "lastModifiedOn": 1711152000000
+    }
+  },
+  {
+    "id": "weekly_product_metrics",
+    "name": "Weekly Product Metrics Rebuild",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "step_based",
+    "active": true,
+    "params": {
+      "notifyOnFailure": true,
+      "notifyOnWarning": true
+    },
+    "triggers": [
+      {
+        "type": "temporal",
+        "active": true,
+        "params": {
+          "frequency": "Weekly",
+          "startFrom": 1690000000000,
+          "hour": 2,
+          "minute": 30,
+          "timezone": "America/New_York",
+          "daysOfWeek": ["SUN"]
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "Build product_metrics",
+        "type": "build_flowitem",
+        "params": {
+          "builds": [{"type": "DATASET", "itemId": "product_metrics"}],
+          "jobType": "RECURSIVE_BUILD"
+        }
+      },
+      {
+        "name": "Build regional_sales_summary",
+        "type": "build_flowitem",
+        "params": {
+          "builds": [{"type": "DATASET", "itemId": "regional_sales_summary"}],
+          "jobType": "NON_RECURSIVE_FORCED_BUILD"
+        }
+      }
+    ],
+    "versionTag": {
+      "versionNumber": 2,
+      "lastModifiedBy": {"login": "analyst"},
+      "lastModifiedOn": 1711238400000
+    }
+  },
+  {
+    "id": "on_demand_full_rebuild",
+    "name": "On Demand Full Rebuild",
+    "projectKey": "CUSTOMER_ANALYTICS",
+    "type": "step_based",
+    "active": true,
+    "params": {
+      "notifyOnFailure": true,
+      "notifyOnWarning": false
+    },
+    "triggers": [],
+    "steps": [
+      {
+        "name": "Full project rebuild",
+        "type": "build_flowitem",
+        "params": {
+          "builds": [
+            {"type": "DATASET", "itemId": "customer_features"},
+            {"type": "DATASET", "itemId": "regional_sales_summary"},
+            {"type": "DATASET", "itemId": "high_value_customers"}
+          ],
+          "jobType": "RECURSIVE_BUILD"
+        }
+      }
+    ],
+    "versionTag": {
+      "versionNumber": 1,
+      "lastModifiedBy": {"login": "admin"},
+      "lastModifiedOn": 1711324800000
+    }
+  }
+]

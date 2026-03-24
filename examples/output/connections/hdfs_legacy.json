@@ -1,0 +1,17 @@
+{
+  "connection_id": "hdfs_legacy",
+  "dataiku_type": "hdfs",
+  "fabric_type": "OneLake_FileCopy",
+  "category": "hadoop",
+  "notes": "Data must be migrated to OneLake — no live shortcut",
+  "workspace_id": "your-workspace-id",
+  "required_secrets": [
+    "username",
+    "password"
+  ],
+  "manual_steps": [
+    "Export data from HDFS to local/cloud staging area",
+    "Upload to OneLake Lakehouse Files section",
+    "Convert to Delta tables if needed"
+  ]
+}

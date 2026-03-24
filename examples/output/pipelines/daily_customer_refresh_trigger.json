@@ -1,0 +1,37 @@
+{
+  "triggers": [
+    {
+      "type": "ScheduleTrigger",
+      "name": "schedule_day",
+      "properties": {
+        "recurrence": {
+          "frequency": "Day",
+          "interval": 1
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "name": "Build CUSTOMER_360_VIEW",
+      "type": "build_flowitem",
+      "target": ""
+    },
+    {
+      "name": "Build customer_features",
+      "type": "build_flowitem",
+      "target": ""
+    },
+    {
+      "name": "Clear staging cache",
+      "type": "exec_sql",
+      "target": ""
+    },
+    {
+      "name": "Send completion report",
+      "type": "send_report",
+      "target": ""
+    }
+  ],
+  "review_flags": []
+}

@@ -1,0 +1,27 @@
+{
+  "triggers": [
+    {
+      "type": "ScheduleTrigger",
+      "name": "schedule_day",
+      "properties": {
+        "recurrence": {
+          "frequency": "Day",
+          "interval": 1
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "name": "Build product_metrics",
+      "type": "build_flowitem",
+      "target": ""
+    },
+    {
+      "name": "Build regional_sales_summary",
+      "type": "build_flowitem",
+      "target": ""
+    }
+  ],
+  "review_flags": []
+}

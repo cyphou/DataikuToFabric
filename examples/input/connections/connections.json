@@ -1,0 +1,122 @@
+{
+  "oracle_erp_prod": {
+    "name": "oracle_erp_prod",
+    "type": "Oracle",
+    "allowWrite": false,
+    "allowManagedDatasets": false,
+    "usableBy": "ALL",
+    "params": {
+      "host": "oracle-erp.prod.internal.company.com",
+      "port": 1521,
+      "sid": "ERPDB",
+      "db": "CRM",
+      "properties": {
+        "oracle.jdbc.timezoneAsRegion": "false"
+      },
+      "namingMode": "SID"
+    },
+    "credentialsMode": "PARAMS",
+    "maxActivities": 4,
+    "creationTag": {
+      "versionNumber": 1,
+      "lastModifiedBy": {"login": "admin"},
+      "lastModifiedOn": 1690000000000
+    }
+  },
+  "postgresql_dw": {
+    "name": "postgresql_dw",
+    "type": "PostgreSQL",
+    "allowWrite": true,
+    "allowManagedDatasets": true,
+    "usableBy": "ALL",
+    "params": {
+      "host": "pg-datawarehouse.prod.internal.company.com",
+      "port": 5432,
+      "db": "analytics_dw",
+      "properties": {
+        "ssl": "true",
+        "sslmode": "require"
+      }
+    },
+    "credentialsMode": "PARAMS",
+    "maxActivities": 8,
+    "creationTag": {
+      "versionNumber": 1,
+      "lastModifiedBy": {"login": "admin"},
+      "lastModifiedOn": 1690100000000
+    }
+  },
+  "s3_datalake": {
+    "name": "s3_datalake",
+    "type": "EC2",
+    "allowWrite": true,
+    "allowManagedDatasets": true,
+    "usableBy": "ALL",
+    "params": {
+      "bucket": "company-analytics-datalake",
+      "path": "/raw/",
+      "region": "us-east-1",
+      "useSTSCredentials": true
+    },
+    "credentialsMode": "KEYPAIR",
+    "creationTag": {
+      "versionNumber": 1,
+      "lastModifiedBy": {"login": "admin"},
+      "lastModifiedOn": 1690200000000
+    }
+  },
+  "azure_blob_staging": {
+    "name": "azure_blob_staging",
+    "type": "Azure",
+    "allowWrite": true,
+    "allowManagedDatasets": false,
+    "usableBy": "ALLOWED",
+    "params": {
+      "account": "companystaging",
+      "container": "etl-staging",
+      "path": "/",
+      "authType": "SERVICE_PRINCIPAL"
+    },
+    "credentialsMode": "PARAMS",
+    "creationTag": {
+      "versionNumber": 1,
+      "lastModifiedBy": {"login": "admin"},
+      "lastModifiedOn": 1690300000000
+    }
+  },
+  "hdfs_legacy": {
+    "name": "hdfs_legacy",
+    "type": "HDFS",
+    "allowWrite": false,
+    "allowManagedDatasets": false,
+    "usableBy": "ALL",
+    "params": {
+      "host": "namenode.hadoop.internal.company.com",
+      "port": 8020,
+      "root": "/data/warehouse",
+      "hadoopConfigDir": "/etc/hadoop/conf"
+    },
+    "credentialsMode": "NONE",
+    "creationTag": {
+      "versionNumber": 1,
+      "lastModifiedBy": {"login": "admin"},
+      "lastModifiedOn": 1690400000000
+    }
+  },
+  "filesystem_managed": {
+    "name": "filesystem_managed",
+    "type": "Filesystem",
+    "allowWrite": true,
+    "allowManagedDatasets": true,
+    "usableBy": "ALL",
+    "params": {
+      "root": "/opt/dataiku/managed_datasets"
+    },
+    "credentialsMode": "NONE",
+    "creationTag": {
+      "versionNumber": 1,
+      "lastModifiedBy": {"login": "admin"},
+      "lastModifiedOn": 1690500000000
+    }
+  }
+}

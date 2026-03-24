@@ -1,0 +1,138 @@
+{
+  "project_key": "CUSTOMER_ANALYTICS",
+  "migration_date": "2026-03-24T07:53:00Z",
+  "toolkit_version": "0.9.0",
+  "summary": {
+    "total_assets": 22,
+    "converted": 20,
+    "failed": 0,
+    "review_needed": 2,
+    "duration_seconds": 14.7
+  },
+  "agents": [
+    {
+      "agent": "DiscoveryAgent",
+      "status": "completed",
+      "assets_processed": 22,
+      "duration_seconds": 2.1
+    },
+    {
+      "agent": "SQLMigrationAgent",
+      "status": "completed",
+      "assets_processed": 2,
+      "assets_converted": 2,
+      "assets_failed": 0,
+      "review_flags": [
+        "compute_customer_360: Contains database link (@dblink) — requires Fabric linked service",
+        "compute_product_metrics: Contains INTERVAL literal — use DATEADD in T-SQL"
+      ],
+      "duration_seconds": 1.8
+    },
+    {
+      "agent": "PythonMigrationAgent",
+      "status": "completed",
+      "assets_processed": 1,
+      "assets_converted": 1,
+      "assets_failed": 0,
+      "review_flags": [
+        "build_customer_features: dataiku.Folder() and dataiku.Dataset().write_dataframe() need manual review"
+      ],
+      "sdk_replacements": 4,
+      "duration_seconds": 0.9
+    },
+    {
+      "agent": "VisualRecipeAgent",
+      "status": "completed",
+      "assets_processed": 6,
+      "assets_converted": 6,
+      "assets_failed": 0,
+      "review_flags": [
+        "clean_customer_data: SPLIT column requires manual CHARINDEX/SUBSTRING"
+      ],
+      "duration_seconds": 0.4
+    },
+    {
+      "agent": "DatasetMigrationAgent",
+      "status": "completed",
+      "assets_processed": 5,
+      "assets_converted": 5,
+      "assets_failed": 0,
+      "storage_decisions": {
+        "warehouse": ["CRM_CUSTOMERS", "ERP_ORDERS", "products_catalog"],
+        "lakehouse": ["WEB_SESSIONS", "customer_features"]
+      },
+      "duration_seconds": 1.2
+    },
+    {
+      "agent": "ConnectionMapperAgent",
+      "status": "completed",
+      "assets_processed": 6,
+      "assets_converted": 4,
+      "assets_failed": 0,
+      "review_flags": [
+        "s3_datalake: EC2/S3 type not directly mapped — configure OneLake shortcut manually",
+        "azure_blob_staging: Azure Blob type not directly mapped — configure ADLS shortcut"
+      ],
+      "manual_steps_required": 2,
+      "duration_seconds": 0.3
+    },
+    {
+      "agent": "FlowPipelineAgent",
+      "status": "completed",
+      "assets_processed": 4,
+      "assets_converted": 4,
+      "pipeline_activities": 16,
+      "triggers_created": 2,
+      "duration_seconds": 1.1
+    },
+    {
+      "agent": "ValidationAgent",
+      "status": "completed",
+      "checks_run": 37,
+      "checks_passed": 35,
+      "checks_failed": 0,
+      "checks_warning": 2,
+      "warnings": [
+        "compute_customer_360.sql: LISTAGG → STRING_AGG translation preserves semantics but WITHIN GROUP ordering may differ",
+        "build_customer_features.ipynb: Unreplaced dataiku.Folder() and dataiku.Dataset() calls remain"
+      ],
+      "duration_seconds": 2.3
+    }
+  ],
+  "output_files": {
+    "sql": [
+      "output/sql/compute_customer_360.sql",
+      "output/sql/compute_product_metrics.sql",
+      "output/sql/join_customer_orders_visual.sql",
+      "output/sql/aggregate_regional_sales_visual.sql",
+      "output/sql/filter_high_value_customers_visual.sql",
+      "output/sql/rank_customers_by_region_visual.sql",
+      "output/sql/pivot_sales_by_category_visual.sql",
+      "output/sql/clean_customer_data_visual.sql"
+    ],
+    "notebooks": [
+      "output/notebooks/build_customer_features.ipynb"
+    ],
+    "ddl": [
+      "output/ddl/CRM_CUSTOMERS.sql",
+      "output/ddl/ERP_ORDERS.sql",
+      "output/ddl/products_catalog.sql",
+      "output/ddl/WEB_SESSIONS.sql",
+      "output/ddl/customer_features.sql"
+    ],
+    "pipelines": [
+      "output/pipelines/CUSTOMER_ANALYTICS_pipeline.json",
+      "output/pipelines/daily_customer_refresh_trigger.json",
+      "output/pipelines/weekly_product_metrics_trigger.json",
+      "output/pipelines/on_demand_full_rebuild_trigger.json"
+    ],
+    "connections": [
+      "output/connections/oracle_erp_prod.json",
+      "output/connections/postgresql_dw.json",
+      "output/connections/s3_datalake.json",
+      "output/connections/azure_blob_staging.json",
+      "output/connections/hdfs_legacy.json",
+      "output/connections/filesystem_managed.json"
+    ]
+  }
+}

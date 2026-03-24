@@ -1,0 +1,31 @@
+{
+  "name": "rank_customers_by_region",
+  "projectKey": "CUSTOMER_ANALYTICS",
+  "type": "window",
+  "inputs": {
+    "main": {
+      "items": [
+        {"ref": "CUSTOMER_360_VIEW", "deps": []}
+      ]
+    }
+  },
+  "outputs": {
+    "main": {
+      "items": [
+        {"ref": "ranked_customers", "deps": []}
+      ]
+    }
+  },
+  "params": {
+    "input": "CUSTOMER_360_VIEW",
+    "function": "RANK",
+    "partitionColumns": ["REGION"],
+    "orderColumns": ["LIFETIME_REVENUE"],
+    "outputColumn": "revenue_rank"
+  },
+  "versionTag": {
+    "versionNumber": 2,
+    "lastModifiedBy": {"login": "analyst"},
+    "lastModifiedOn": 1711411200000
+  }
+}
