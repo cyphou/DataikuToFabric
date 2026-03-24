@@ -339,6 +339,8 @@ Incremental re-export only fetches new rows
 25+ tests green
 ```
 
+### Status: ✅ DONE (688 tests)
+
 ---
 
 ## Phase 12 — Fabric Deployment

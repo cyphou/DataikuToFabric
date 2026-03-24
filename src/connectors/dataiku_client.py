@@ -195,18 +195,34 @@ class DataikuClient:
         dataset_name: str,
         output_path: str,
         fmt: str = "csv",
+        *,
+        filter_column: str | None = None,
+        filter_value: str | None = None,
     ) -> dict:
         """Export dataset data to a local file using streaming download.
 
         Streams data in chunks to handle large datasets without
         loading everything into memory.
 
+        Args:
+            project_key: Dataiku project key.
+            dataset_name: Dataset name to export.
+            output_path: Local file path for output.
+            fmt: Export format (``csv``, ``tsv``, ``parquet-stream``).
+            filter_column: If set, export only rows where column > filter_value (watermark).
+            filter_value: The watermark threshold value for incremental export.
+
         Returns metadata about the export (file size, row estimate).
         """
         from pathlib import Path
 
         url = f"{self.base_url}/public/api/projects/{project_key}/datasets/{dataset_name}/data"
-        params = {"apiKey": self._api_key, "format": fmt}
+        params: dict[str, str] = {"apiKey": self._api_key, "format": fmt}
+
+        # Incremental filter — Dataiku DSS supports filter as a query param
+        if filter_column and filter_value is not None:
+            params["filter"] = f"{filter_column} > '{filter_value}'"
+
         client = await self._ensure_client()
 
         out = Path(output_path)
@@ -224,6 +240,7 @@ class DataikuClient:
             "path": str(out),
             "format": fmt,
             "size_bytes": total_bytes,
+            "incremental": filter_column is not None,
         }
 
     async def get_dataset_row_count(self, project_key: str, dataset_name: str) -> int | None:

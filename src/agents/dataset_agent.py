@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -336,3 +337,247 @@ class DatasetMigrationAgent(BaseAgent):
             checks_failed=len(failures),
             failures=failures,
         )
+
+
+# ── Data migration helpers ────────────────────────────────────
+
+LARGE_FILE_THRESHOLD = 100 * 1024 * 1024  # 100 MB
+
+
+async def export_dataset(
+    dataiku_client: Any,
+    project_key: str,
+    dataset_name: str,
+    output_dir: Path,
+    fmt: str = "parquet",
+    *,
+    incremental_column: str | None = None,
+    watermark_value: str | None = None,
+) -> dict:
+    """Export a dataset from Dataiku to a local file.
+
+    Args:
+        dataiku_client: DataikuClient instance.
+        project_key: Source project.
+        dataset_name: Dataset to export.
+        output_dir: Local staging directory.
+        fmt: Export format (``parquet``, ``csv``).
+        incremental_column: Column for watermark-based incremental export.
+        watermark_value: Previous watermark value (export rows > this).
+
+    Returns export metadata dict.
+    """
+    ext = "parquet" if "parquet" in fmt else "csv"
+    output_path = str(output_dir / f"{dataset_name}.{ext}")
+    result = await dataiku_client.export_dataset_to_file(
+        project_key, dataset_name, output_path, fmt=fmt,
+        filter_column=incremental_column,
+        filter_value=watermark_value,
+    )
+    logger.info("dataset_exported", dataset=dataset_name, **result)
+    return result
+
+
+async def upload_dataset(
+    fabric_client: Any,
+    lakehouse_id: str,
+    local_path: str,
+    destination_path: str,
+    *,
+    chunk_size_mb: int = 4,
+    upload_method: str = "httpx",
+    on_progress: Any | None = None,
+) -> dict:
+    """Upload an exported dataset file to OneLake.
+
+    Automatically uses azcopy for files >100 MB if configured.
+
+    Args:
+        fabric_client: FabricClient instance.
+        lakehouse_id: Target Lakehouse item ID.
+        local_path: Path to local file.
+        destination_path: Destination in OneLake (e.g. ``Files/data.parquet``).
+        chunk_size_mb: Chunk size for httpx upload.
+        upload_method: ``httpx`` or ``azcopy``.
+        on_progress: Optional progress callback.
+    """
+    file_size = os.path.getsize(local_path)
+
+    # Use azcopy for large files or when explicitly requested
+    if upload_method == "azcopy" or (file_size > LARGE_FILE_THRESHOLD and upload_method != "httpx"):
+        try:
+            dest_url = (
+                f"https://onelake.dfs.fabric.microsoft.com"
+                f"/{fabric_client.workspace_id}/{lakehouse_id}/{destination_path}"
+            )
+            result = await fabric_client.upload_via_azcopy(local_path, dest_url)
+            logger.info("dataset_uploaded_azcopy", destination=destination_path, size=file_size)
+            return result
+        except RuntimeError:
+            logger.warning("azcopy_fallback", reason="azcopy not available, using httpx")
+            # Fall through to httpx upload
+
+    result = await fabric_client.upload_to_lakehouse(
+        lakehouse_id, local_path, destination_path,
+        chunk_size_mb=chunk_size_mb, on_progress=on_progress,
+    )
+    logger.info("dataset_uploaded", destination=destination_path, **result)
+    return result
+
+
+async def load_into_table(
+    fabric_client: Any,
+    lakehouse_id: str,
+    table_name: str,
+    file_path_in_lakehouse: str,
+    file_format: str = "parquet",
+    mode: str = "overwrite",
+) -> dict:
+    """Load staged data from Lakehouse Files into a Delta table.
+
+    Args:
+        fabric_client: FabricClient instance.
+        lakehouse_id: Target Lakehouse.
+        table_name: Delta table name.
+        file_path_in_lakehouse: Relative path within Lakehouse (e.g. ``Files/data.parquet``).
+        file_format: Source file format.
+        mode: ``overwrite`` or ``append``.
+    """
+    result = await fabric_client.load_table(
+        lakehouse_id, table_name, file_path_in_lakehouse,
+        file_format=file_format, mode=mode,
+    )
+    logger.info("table_loaded", table=table_name, mode=mode)
+    return result
+
+
+async def verify_row_counts(
+    dataiku_client: Any,
+    fabric_client: Any,
+    project_key: str,
+    dataset_name: str,
+    warehouse_id: str | None = None,
+    table_name: str | None = None,
+) -> dict:
+    """Compare row counts between source (Dataiku) and target (Fabric).
+
+    Returns a dict with source_count, target_count, and match status.
+    """
+    source_count = await dataiku_client.get_dataset_row_count(project_key, dataset_name)
+
+    target_count = None
+    if warehouse_id and table_name:
+        target_count = await fabric_client.query_row_count(warehouse_id, table_name)
+
+    match = (
+        source_count is not None
+        and target_count is not None
+        and source_count == target_count
+    )
+    result = {
+        "dataset": dataset_name,
+        "source_count": source_count,
+        "target_count": target_count,
+        "match": match,
+        "source_available": source_count is not None,
+        "target_available": target_count is not None,
+    }
+
+    if not match and source_count is not None and target_count is not None:
+        logger.warning("row_count_mismatch", **result)
+    elif match:
+        logger.info("row_count_verified", **result)
+
+    return result
+
+
+def get_watermark(asset_metadata: dict) -> tuple[str | None, str | None]:
+    """Extract incremental watermark config from asset metadata.
+
+    Returns (column_name, last_watermark_value) or (None, None).
+    """
+    incremental = asset_metadata.get("incremental", {})
+    column = incremental.get("column")
+    watermark = incremental.get("last_watermark")
+    return column, watermark
+
+
+def update_watermark(asset_metadata: dict, column: str, value: str) -> None:
+    """Store watermark value in asset metadata for next incremental run."""
+    if "incremental" not in asset_metadata:
+        asset_metadata["incremental"] = {}
+    asset_metadata["incremental"]["column"] = column
+    asset_metadata["incremental"]["last_watermark"] = value
+
+
+async def run_data_migration(
+    context: Any,
+    asset: Any,
+    staging_dir: Path,
+) -> dict:
+    """Execute the full data migration pipeline for a single dataset asset.
+
+    Steps: export → upload → load → verify row counts.
+
+    Returns a result dict with status and details from each step.
+    """
+    config = context.config
+    dataiku_client = context.connectors.get("dataiku")
+    fabric_client = context.connectors.get("fabric")
+
+    if not dataiku_client or not fabric_client:
+        return {"status": "skipped", "reason": "connectors not configured"}
+
+    project_key = config.dataiku.project_key
+    target = asset.target_fabric_asset or {}
+    storage = target.get("storage", "lakehouse")
+    table_name = asset.name
+    export_format = config.migration.export_format
+
+    # Check for incremental watermark
+    inc_col, inc_val = get_watermark(asset.metadata)
+
+    # Step 1: Export from Dataiku
+    export_result = await export_dataset(
+        dataiku_client, project_key, table_name, staging_dir,
+        fmt=export_format,
+        incremental_column=inc_col,
+        watermark_value=inc_val,
+    )
+
+    local_path = export_result["path"]
+    ext = "parquet" if "parquet" in export_format else "csv"
+    dest_path = f"Files/staging/{table_name}.{ext}"
+
+    # Step 2: Upload to OneLake
+    lakehouse_id = getattr(config.fabric, "lakehouse_id", config.fabric.workspace_id)
+    upload_result = await upload_dataset(
+        fabric_client, lakehouse_id, local_path, dest_path,
+        chunk_size_mb=config.migration.chunk_size_mb,
+        upload_method=config.migration.upload_method,
+    )
+
+    # Step 3: Load into Delta table (lakehouse only)
+    load_result = {}
+    if storage == "lakehouse":
+        load_result = await load_into_table(
+            fabric_client, lakehouse_id, table_name, dest_path,
+            file_format=ext, mode=config.migration.load_mode,
+        )
+
+    # Step 4: Verify row counts
+    warehouse_id = getattr(config.fabric, "warehouse_id", None)
+    verify_result = await verify_row_counts(
+        dataiku_client, fabric_client,
+        project_key, table_name,
+        warehouse_id=warehouse_id if storage == "warehouse" else None,
+        table_name=table_name,
+    )
+
+    return {
+        "status": "completed",
+        "export": export_result,
+        "upload": upload_result,
+        "load": load_result,
+        "row_count_verification": verify_result,
+    }

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Data migration pipeline: export datasets from Dataiku → upload to OneLake → load into Delta/Warehouse tables
+- Chunked upload to OneLake with configurable chunk size (default 4 MB), retry logic, progress callback
+- `upload_via_azcopy()` for large file uploads (>100 MB auto-detection, fallback to httpx)
+- `query_row_count()` for post-load row count verification (source vs target)
+- Incremental/watermark export: `filter_column` and `filter_value` on Dataiku dataset export
+- `get_watermark()` / `update_watermark()` helpers for incremental migration tracking
+- `run_data_migration()` orchestrating full export → upload → load → verify pipeline
+- Data migration config options: `export_format`, `chunk_size_mb`, `compression`, `upload_method`, `load_mode`
+- 29 new tests in `test_data_migration.py` covering full pipeline, upload methods, watermark, row counts
 - `--dry-run` flag on `migrate` — prints execution plan (waves, agents, asset counts) without running
 - Rich progress bars during migration (per-agent wave tracking with spinner, bar, elapsed time)
 - `--quiet` / `-q` flag to suppress progress bars

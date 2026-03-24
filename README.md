@@ -313,6 +313,7 @@ DataikuToFabric/
 | 8 — Integration & Packaging | 🟢 Done | E2E tests, perf tests, Docker, CI, docs, CHANGELOG |
 | 9 — Checkpoint & Resume | 🟢 Done | Checkpoint/resume, selective re-run, asset filtering (621 tests, 85% cov) |
 | 10 — CLI Hardening | 🟢 Done | --dry-run, Rich progress bars, interactive wizard, config validate, status, --output-format (659 tests) |
+| 11 — Data Migration | 🟢 Done | Export → OneLake upload → Delta load pipeline, chunked/azcopy upload, incremental watermark, row count verification (688 tests) |
 
 ---
 

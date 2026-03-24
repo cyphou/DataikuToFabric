@@ -26,6 +26,12 @@ migration:
   max_concurrent_agents: 4
   fail_fast: false                        # Stop on first failure?
   output_dir: "./output"
+  # Data migration options
+  export_format: "parquet"                # parquet | csv
+  chunk_size_mb: 4                        # Upload chunk size (MB)
+  compression: "snappy"                   # snappy | gzip | none
+  upload_method: "httpx"                  # httpx | azcopy (auto-fallback for >100MB)
+  load_mode: "overwrite"                  # overwrite | append
 
 # ─── Orchestrator ────────────────────────────
 orchestrator:

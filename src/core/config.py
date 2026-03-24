@@ -40,6 +40,12 @@ class MigrationConfig(BaseModel):
     max_concurrent_agents: int = 4
     fail_fast: bool = False
     output_dir: str = "./output"
+    # Data migration options
+    export_format: str = "parquet"
+    chunk_size_mb: int = 4
+    compression: str = "snappy"
+    upload_method: str = "httpx"
+    load_mode: str = "overwrite"
 
 
 class OrchestratorConfig(BaseModel):

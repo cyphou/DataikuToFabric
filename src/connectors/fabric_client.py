@@ -182,15 +182,21 @@ class FabricClient:
         lakehouse_id: str,
         file_path: str,
         destination_path: str,
+        *,
+        chunk_size_mb: int = 4,
+        on_progress: Any | None = None,
     ) -> dict:
         """Upload a file to Lakehouse Files section via the OneLake API.
 
-        Uses the Fabric OneLake ADLS Gen2-compatible endpoint.
+        Uses the Fabric OneLake ADLS Gen2-compatible endpoint with
+        chunked upload for reliable large-file transfer.
 
         Args:
             lakehouse_id: The Lakehouse item ID.
             file_path: Local file path to upload.
             destination_path: Destination path within OneLake (e.g. ``Files/data.parquet``).
+            chunk_size_mb: Upload chunk size in MB (default 4).
+            on_progress: Optional callback ``(bytes_sent, total_bytes)``.
         """
         import os
 
@@ -200,6 +206,7 @@ class FabricClient:
         )
 
         file_size = os.path.getsize(file_path)
+        chunk_size = chunk_size_mb * 1024 * 1024
 
         async with httpx.AsyncClient(timeout=self._timeout * 5, verify=True) as client:
             # Step 1: Create file
@@ -210,20 +217,36 @@ class FabricClient:
             )
             create_resp.raise_for_status()
 
-            # Step 2: Append data
+            # Step 2: Append data in chunks
+            position = 0
             with open(file_path, "rb") as f:
-                data = f.read()
+                while position < file_size:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    chunk_len = len(chunk)
 
-            append_resp = await client.patch(
-                onelake_url,
-                headers={
-                    "Authorization": self._headers["Authorization"],
-                    "Content-Length": str(file_size),
-                },
-                params={"action": "append", "position": "0"},
-                content=data,
-            )
-            append_resp.raise_for_status()
+                    for attempt in range(3):
+                        try:
+                            append_resp = await client.patch(
+                                onelake_url,
+                                headers={
+                                    "Authorization": self._headers["Authorization"],
+                                    "Content-Length": str(chunk_len),
+                                },
+                                params={"action": "append", "position": str(position)},
+                                content=chunk,
+                            )
+                            append_resp.raise_for_status()
+                            break
+                        except (httpx.RequestError, httpx.HTTPStatusError):
+                            if attempt == 2:
+                                raise
+                            await asyncio.sleep(2 ** attempt)
+
+                    position += chunk_len
+                    if on_progress:
+                        on_progress(position, file_size)
 
             # Step 3: Flush to commit
             flush_resp = await client.patch(
@@ -237,7 +260,64 @@ class FabricClient:
             "status": "uploaded",
             "destination": destination_path,
             "size_bytes": file_size,
+            "chunks": (file_size + chunk_size - 1) // chunk_size,
         }
+
+    async def upload_via_azcopy(
+        self,
+        file_path: str,
+        destination_url: str,
+    ) -> dict:
+        """Upload a file using azcopy (for large files >100 MB).
+
+        Falls back gracefully if azcopy is not installed.
+
+        Args:
+            file_path: Local file to upload.
+            destination_url: Full OneLake destination URL.
+
+        Returns upload result dict or raises RuntimeError.
+        """
+        import shutil
+        import subprocess
+
+        azcopy_path = shutil.which("azcopy")
+        if not azcopy_path:
+            raise RuntimeError("azcopy not found on PATH — install or use httpx upload method")
+
+        result = subprocess.run(
+            [azcopy_path, "copy", file_path, destination_url, "--overwrite=true"],
+            capture_output=True,
+            text=True,
+            timeout=3600,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(f"azcopy failed: {result.stderr}")
+
+        return {
+            "status": "uploaded",
+            "method": "azcopy",
+            "file_path": file_path,
+            "destination": destination_url,
+        }
+
+    async def query_row_count(self, warehouse_id: str, table_name: str) -> int | None:
+        """Query the row count for a table in a Warehouse.
+
+        Returns None if the query fails.
+        """
+        try:
+            result = await self.execute_sql(
+                warehouse_id, f"SELECT COUNT(*) AS cnt FROM [{table_name}]"
+            )
+            # Fabric returns result rows in the response
+            rows = result.get("rows", result.get("data", []))
+            if rows and isinstance(rows, list):
+                return int(rows[0].get("cnt", rows[0].get(0, 0)))
+            return None
+        except Exception:
+            return None
 
     async def list_lakehouse_tables(self, lakehouse_id: str) -> list[dict]:
         """List tables in a Lakehouse."""
