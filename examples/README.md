@@ -188,3 +188,43 @@ dataiku-to-fabric migrate --project YOUR_PROJECT
 
 # 6. Check output/ folder for results matching this examples/ structure
 ```
+
+---
+
+## 🚀 Running the Demo (Offline)
+
+The `run_demo.py` script exercises the **entire migration pipeline** end-to-end using the bundled fixtures — **no live Dataiku server or Fabric workspace needed**.
+
+```bash
+# Run all steps
+py examples/run_demo.py
+
+# Run with fresh output
+py examples/run_demo.py --clean
+
+# Run a specific step
+py examples/run_demo.py --step assess    # Pre-migration assessment
+py examples/run_demo.py --step sql       # SQL translation only
+py examples/run_demo.py --step lineage   # Lineage graph
+py examples/run_demo.py --step qa        # QA suite
+```
+
+### Available Steps
+
+| Step | Description | Output |
+|------|-------------|--------|
+| `discover` | Build asset registry from fixtures | `registry.json` |
+| `assess` | Project readiness assessment | `assessment.html`, `assessment.json` |
+| `sql` | Oracle/PostgreSQL → T-SQL translation | `sql/*.sql` |
+| `python` | Python recipe → Fabric Notebook | `notebooks/*.ipynb` |
+| `visual` | Visual recipes → SQL | `sql/*_visual.sql` |
+| `ddl` | Dataset DDL generation | `ddl/*.sql` |
+| `connections` | Connection mapping | `connections/*.json` |
+| `qa` | Governance, fidelity, cross-validation | `qa_report.html` |
+| `heal` | Self-healing engine | Console output |
+| `lineage` | Lineage graph & impact analysis | `lineage.html`, `lineage.mmd` |
+| `drift` | Schema drift detection | `drift_report.html` |
+| `equivalence` | Equivalence testing | `equivalence.json` |
+| `pipeline` | Flow → Pipeline summary | Console output |
+
+Output is written to `examples/output/demo/`.

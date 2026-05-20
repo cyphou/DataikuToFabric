@@ -22,3 +22,5 @@ venv/
 # OS artefacts
 .DS_Store
 Thumbs.db
+
+examples/output/demo/
