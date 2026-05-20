@@ -455,5 +455,228 @@ def interactive():
     click.echo("\nMigration complete.")
 
 
+# ── assess (Phase 19) ─────────────────────────────────────────
+
+@cli.command()
+@click.option("--project", "-p", required=True, help="Dataiku project key")
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+@click.option("--output", "-o", "output_path", default=None, help="Output HTML report path")
+@click.option("--output-format", "-f", "fmt", type=click.Choice(["table", "json", "yaml"]), default="table", help="Output format")
+def assess(project: str, config: str, output_path: str | None, fmt: str):
+    """Run pre-migration readiness assessment."""
+    from src.analyzers.project_analyzer import assess_project
+    from src.analyzers.strategy_advisor import recommend_strategy
+    from src.reports.assessment_report import save_assessment_report
+
+    orch = _build_orchestrator(config)
+    orch.config.dataiku.project_key = project
+    orch.registry.load()
+
+    result = assess_project(orch.registry)
+    rec = recommend_strategy(result, orch.registry)
+
+    data = {
+        "project": result.project_key,
+        "grade": result.grade.value,
+        "score": round(result.overall_score, 1),
+        "total_assets": result.total_assets,
+        "strategy": rec.strategy.value,
+        "confidence": round(rec.confidence, 1),
+        "risks": len(result.risks),
+    }
+    click.echo(_format_output(data, fmt))
+
+    if output_path:
+        save_assessment_report(result, output_path)
+        click.echo(f"Report saved: {output_path}")
+
+
+# ── qa (Phase 20) ────────────────────────────────────────────
+
+@cli.command()
+@click.option("--project", "-p", required=True, help="Dataiku project key")
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+@click.option("--auto-fix", is_flag=True, default=False, help="Enable self-healing auto-fix")
+@click.option("--compare", is_flag=True, default=False, help="Enable cross-validation comparison")
+@click.option("--output", "-o", "output_path", default=None, help="Output HTML report path")
+@click.option("--output-format", "-f", "fmt", type=click.Choice(["table", "json", "yaml"]), default="table", help="Output format")
+def qa(project: str, config: str, auto_fix: bool, compare: bool, output_path: str | None, fmt: str):
+    """Run QA suite on migrated assets."""
+    from src.qa.qa_suite import run_qa_suite
+    from src.qa.comparison_report import save_qa_report
+
+    orch = _build_orchestrator(config)
+    orch.config.dataiku.project_key = project
+    orch.registry.load()
+
+    result = run_qa_suite(orch.registry, enable_fix=auto_fix, enable_compare=compare)
+
+    data = {
+        "project": result.project_key,
+        "passed": result.overall_passed,
+        "stages": len(result.stage_results),
+        "findings": result.total_findings,
+        "fixes": result.total_fixes,
+    }
+    click.echo(_format_output(data, fmt))
+
+    if output_path:
+        save_qa_report(result, output_path)
+        click.echo(f"QA report saved: {output_path}")
+
+
+# ── check-drift (Phase 22) ───────────────────────────────────
+
+@cli.command(name="check-drift")
+@click.option("--project", "-p", required=True, help="Dataiku project key")
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+@click.option("--baseline", "-b", default=None, help="Path to baseline snapshot (auto-creates if missing)")
+@click.option("--output", "-o", "output_path", default=None, help="Output HTML report path")
+@click.option("--output-format", "-f", "fmt", type=click.Choice(["table", "json", "yaml"]), default="table", help="Output format")
+def check_drift(project: str, config: str, baseline: str | None, output_path: str | None, fmt: str):
+    """Detect schema drift between snapshots."""
+    from src.drift.snapshot import MigrationSnapshot, take_snapshot
+    from src.drift.drift_detector import detect_drift
+    from src.reports.drift_report import save_drift_report
+
+    orch = _build_orchestrator(config)
+    orch.config.dataiku.project_key = project
+    orch.registry.load()
+
+    current = take_snapshot(orch.registry)
+    output_dir = Path(orch.config.migration.output_dir)
+    baseline_path = Path(baseline) if baseline else output_dir / f"{project}_baseline.json"
+
+    if baseline_path.exists():
+        base = MigrationSnapshot.load(baseline_path)
+        report = detect_drift(base, current)
+
+        data = {
+            "project": project,
+            "drift_items": len(report.items),
+            "breaking": report.has_breaking_changes,
+        }
+        click.echo(_format_output(data, fmt))
+
+        if output_path:
+            save_drift_report(report, output_path)
+            click.echo(f"Drift report saved: {output_path}")
+    else:
+        current.save(baseline_path)
+        click.echo(f"Baseline snapshot saved: {baseline_path}")
+        click.echo("Run again after changes to detect drift.")
+
+
+# ── lineage (Phase 23) ───────────────────────────────────────
+
+@cli.command()
+@click.option("--project", "-p", required=True, help="Dataiku project key")
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+@click.option("--output", "-o", "output_path", default=None, help="Output HTML report path")
+@click.option("--impact", default=None, help="Asset ID for impact analysis")
+@click.option("--output-format", "-f", "fmt", type=click.Choice(["table", "json", "yaml"]), default="table", help="Output format")
+def lineage(project: str, config: str, output_path: str | None, impact: str | None, fmt: str):
+    """Generate lineage map and optional impact analysis."""
+    from src.lineage.lineage_builder import build_lineage
+    from src.reports.lineage_report import save_lineage_report
+
+    orch = _build_orchestrator(config)
+    orch.config.dataiku.project_key = project
+    orch.registry.load()
+
+    graph = build_lineage(orch.registry)
+
+    data: dict = {
+        "project": project,
+        "nodes": len(graph.nodes),
+        "edges": len(graph.edges),
+    }
+
+    if impact:
+        impacted = graph.impact_analysis(impact)
+        data["impact_asset"] = impact
+        data["impacted_count"] = len(impacted)
+        data["impacted"] = list(impacted)
+
+    click.echo(_format_output(data, fmt))
+
+    if output_path:
+        save_lineage_report(graph, output_path)
+        click.echo(f"Lineage report saved: {output_path}")
+
+
+# ── serve (Phase 24) ─────────────────────────────────────────
+
+@cli.command()
+@click.option("--host", "-h", "host", default="127.0.0.1", help="Bind address")
+@click.option("--port", default=8080, help="Port number")
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+def serve(host: str, port: int, config: str):
+    """Start the REST API server."""
+    from src.api.server import create_server
+    from src.api.job_manager import JobManager
+
+    orch = _build_orchestrator(config)
+    orch.registry.load()
+
+    server = create_server(host=host, port=port, registry=orch.registry, job_manager=JobManager())
+    click.echo(f"API server listening on http://{host}:{port}")
+    click.echo("Press Ctrl+C to stop.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.shutdown()
+        click.echo("\nServer stopped.")
+
+
+# ── merge (Phase 27) ─────────────────────────────────────────
+
+@cli.command()
+@click.option("--projects", "-p", required=True, help="Comma-separated Dataiku project keys")
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+@click.option("--resolution", type=click.Choice(["keep_first", "keep_latest", "rename", "manual"]),
+              default="rename", help="Conflict resolution strategy")
+@click.option("--output", "-o", "output_path", default=None, help="Output HTML report path")
+@click.option("--output-format", "-f", "fmt", type=click.Choice(["table", "json", "yaml"]), default="table", help="Output format")
+def merge(projects: str, config: str, resolution: str, output_path: str | None, fmt: str):
+    """Assess and merge multiple Dataiku projects."""
+    from src.merge.merge_config import ConflictResolution, MergeConfig
+    from src.merge.merge_assessment import assess_merge
+    from src.merge.deduplicator import deduplicate
+    from src.reports.merge_report import save_merge_report
+
+    cfg = load_config(config)
+    output_dir = Path(cfg.migration.output_dir)
+
+    project_list = [p.strip() for p in projects.split(",")]
+    registries = []
+    for pk in project_list:
+        reg = AssetRegistry(
+            project_key=pk,
+            registry_path=output_dir / f"{pk}_registry.json",
+        )
+        reg.load()
+        registries.append(reg)
+
+    assessment = assess_merge(registries)
+    merge_cfg = MergeConfig(conflict_resolution=ConflictResolution(resolution))
+    dedup_result = deduplicate(registries, assessment, merge_cfg)
+
+    data = {
+        "projects": project_list,
+        "total_assets": assessment.total_assets,
+        "overlaps": len(assessment.overlaps),
+        "merge_score": round(assessment.merge_score, 1),
+        "output_assets": dedup_result.total_output_assets,
+        "resolved": dedup_result.conflicts_resolved,
+        "pending": dedup_result.conflicts_pending,
+    }
+    click.echo(_format_output(data, fmt))
+
+    if output_path:
+        save_merge_report(assessment, output_path, dedup_result)
+        click.echo(f"Merge report saved: {output_path}")
+
+
 if __name__ == "__main__":
     cli()

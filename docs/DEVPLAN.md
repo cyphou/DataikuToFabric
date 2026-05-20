@@ -1,7 +1,7 @@
 # Development Plan — Dataiku to Fabric Migration Toolkit
 
 > Phased roadmap from scaffold to production-ready migration tool.
-> **Last updated:** 2025-01-20 (Phase 11 done)
+> **Last updated:** 2025-05-20 (Phase 27 done)
 >
 > **See also:** [UPGRADE_PLAN.md](UPGRADE_PLAN.md) — Phases 19–30 expansion plan incorporating features from TableauToPowerBI v37.0.0.
 
@@ -30,7 +30,16 @@
 | Flow pipeline agent | **Done** | DAG builder, topological sort, 6 activity types, 6 trigger types, converted asset refs |
 | Connection agent | **Done** | 12 connection types, gateway/shortcut/pipeline templates, credential mapping |
 | Validation agent | **Done** | Schema comparison, row count, SQL syntax, notebook structure, pipeline integrity, connection mapping, review flags |
-| Tests | **688 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), checkpoint/resume (33), CLI (53), logger (6), E2E (19), perf (4), data migration (29), conftest fixtures |
+| Pre-migration assessment | **Done** | Project analyzer, strategy advisor, readiness grading, assessment HTML report |
+| QA suite | **Done** | Governance (PII, naming, endorsement), fidelity scoring, cross-validation, comparison report |
+| Self-healing engine | **Done** | Base healer, healer registry, SQL (9), notebook (5), pipeline (3), schema (3) healers |
+| Schema drift detection | **Done** | Snapshots, drift detector, drift severity, drift HTML report |
+| Lineage map | **Done** | Lineage graph, builder, upstream/downstream, impact analysis, Mermaid export, HTML report |
+| REST API server | **Done** | Job manager, HTTP handler, health/status/assets/jobs endpoints |
+| Plugin system | **Done** | Base plugin ABC, plugin manager, directory loading, 7 lifecycle hooks, sample plugin |
+| Equivalence testing | **Done** | Schema equivalence, type compatibility, row count match, regression baselines |
+| Multi-project merge | **Done** | Merge config, assessment, deduplication, conflict resolution, merge HTML report |
+| Tests | **877 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), checkpoint/resume (33), CLI (53), logger (6), E2E (19), perf (4), data migration (29), assessment (16), QA suite (18), self-healing (28), schema drift (14), lineage (18), API server (19), plugins (18), equivalence/regression (21), merge (14), conftest fixtures |
 
 ---
 
@@ -48,7 +57,7 @@
 | **Phase 8** | ~~Integration, packaging, CI, Dockerfile, docs~~ | **DONE** — 512 tests |
 | Phase 9 | ~~Checkpoint, resume & selective re-run~~ | **DONE** — 566 tests, 85% cov |
 | Phase 10 | ~~CLI hardening — dry-run, progress, interactive~~ | **DONE** — 659 tests, 53 CLI tests |
-| Phase 11 | Data migration — export, upload, row-count verify | Round-trip data for sample dataset |
+| Phase 11 | ~~Data migration — export, upload, row-count verify~~ | **DONE** — 688 tests |
 | Phase 12 | Fabric deployment — agents call create APIs | Notebook + pipeline + DDL deployed to workspace |
 | Phase 13 | Security — Key Vault, credential rotation, audit | Zero secrets in logs or config files |
 | Phase 14 | Rollback & error recovery | `rollback` command deletes deployed assets |
@@ -56,6 +65,15 @@
 | Phase 16 | Advanced recipes — R, Spark-Scala, custom plugins | Unsupported types flagged, not silently dropped |
 | Phase 17 | Dashboard → Power BI migration | Dashboard agent generates .pbix / REST deploy |
 | Phase 18 | ML Model → Fabric ML migration | Model export, ONNX convert, AzureML register |
+| **Phase 19** | ~~Pre-migration assessment — readiness scoring, strategy~~ | **DONE** — 16 tests |
+| **Phase 20** | ~~QA suite — governance, fidelity, cross-validation~~ | **DONE** — 18 tests |
+| **Phase 21** | ~~Self-healing engine — SQL, notebook, pipeline, schema healers~~ | **DONE** — 28 tests |
+| **Phase 22** | ~~Schema drift detection — snapshots, drift detector~~ | **DONE** — 14 tests |
+| **Phase 23** | ~~Lineage map & visualization — DAG, impact analysis~~ | **DONE** — 18 tests |
+| **Phase 24** | ~~REST API server — job manager, HTTP handler~~ | **DONE** — 19 tests |
+| **Phase 25** | ~~Plugin system — base plugin, manager, sample plugin~~ | **DONE** — 18 tests |
+| **Phase 26** | ~~Equivalence testing & regression suite~~ | **DONE** — 21 tests |
+| **Phase 27** | ~~Multi-project merge & shared models~~ | **DONE** — 14 tests |
 
 ---
 
