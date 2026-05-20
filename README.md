@@ -325,7 +325,8 @@ DataikuToFabric/
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common errors & solutions |
 | [docs/AGENTS.md](docs/AGENTS.md) | Full agent specifications |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Core system design |
-| [docs/DEVPLAN.md](docs/DEVPLAN.md) | Development roadmap |
+| [docs/DEVPLAN.md](docs/DEVPLAN.md) | Development roadmap (Phases 1–18) |
+| [docs/UPGRADE_PLAN.md](docs/UPGRADE_PLAN.md) | v2.0 upgrade plan — Phases 19–30 from TableauToPowerBI |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 | [examples/README.md](examples/README.md) | Migration examples & walkthrough |
 

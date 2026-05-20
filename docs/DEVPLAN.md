@@ -1,7 +1,9 @@
 # Development Plan — Dataiku to Fabric Migration Toolkit
 
 > Phased roadmap from scaffold to production-ready migration tool.
-> **Last updated:** 2026-03-24 (Phase 10 done)
+> **Last updated:** 2025-01-20 (Phase 11 done)
+>
+> **See also:** [UPGRADE_PLAN.md](UPGRADE_PLAN.md) — Phases 19–30 expansion plan incorporating features from TableauToPowerBI v37.0.0.
 
 ---
 
@@ -28,7 +30,7 @@
 | Flow pipeline agent | **Done** | DAG builder, topological sort, 6 activity types, 6 trigger types, converted asset refs |
 | Connection agent | **Done** | 12 connection types, gateway/shortcut/pipeline templates, credential mapping |
 | Validation agent | **Done** | Schema comparison, row count, SQL syntax, notebook structure, pipeline integrity, connection mapping, review flags |
-| Tests | **659 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), checkpoint/resume (33), CLI (53), logger (6), E2E (19), perf (4), conftest fixtures |
+| Tests | **688 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), checkpoint/resume (33), CLI (53), logger (6), E2E (19), perf (4), data migration (29), conftest fixtures |
 
 ---
 
