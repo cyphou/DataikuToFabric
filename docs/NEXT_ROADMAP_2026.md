@@ -1,6 +1,6 @@
 # Next Roadmap 2026 - DataikuToFabric
 
-**Updated**: 2026-06-24 (19:15 UTC)  
+**Updated**: 2026-06-24 (20:10 UTC)  
 **Status**: Phases 28, 15 Complete + Wave A Recovery Complete, moving to Phase 24 (API Operations)
 
 ## Baseline Snapshot
@@ -20,6 +20,11 @@ DataikuToFabric current baseline (as of 2026-06-24):
 - ✅ Wave A Recovery — Health monitoring, failure detection, circuit breakers
 
 **Status**: Wave A 100% complete, all production gaps closed. Phase 15 (Observability Expansion) complete.
+
+**Validation Checkpoint (Latest)**:
+- Full regression + migration test run completed on 2026-06-24
+- Result: **1081 passed, 0 failed, 1 warning** in 288.51s
+- Scope included: integration pipeline, data migration, translators, recovery, Wave A ops integration, Wave B observability integration
 
 ---
 
@@ -125,42 +130,37 @@ DataikuToFabric current baseline (as of 2026-06-24):
 
 ## Recommended Immediate Actions (Next Sprint: 2 weeks)
 
-### Sprint Goal: Wave B Observability + API Auth
+### Sprint Goal: Phase 24 API Operations Delivery
 
 **Tasks**:
 
-1. **Extend DecisionEvent telemetry** (4 points)
-   - Add decision_category for recovery actions (detect → policy → attempt → outcome)
-   - Extend DecisionEvent to track recovery strategy selection
-   - Add recovery metrics to operations dashboard
-   - Files: `src/core/observability.py`, `src/core/recovery.py`
-
-2. **Implement API auth middleware** (5 points)
+1. **Implement API auth middleware** (5 points)
    - Add API key validation (static + dynamic with Key Vault)
    - Add bearer token validation (JWT + OAuth 2.0)
    - Add RBAC middleware for project-level access control
    - Files: `src/api/server.py`
 
-3. **Add batch job endpoints** (4 points)
+2. **Add batch job endpoints** (4 points)
    - POST /jobs/batch — submit multiple projects in one request
    - GET /jobs/batch/{batch_id} — track batch status
    - GET /jobs?project=X&status=Y — filtering + pagination
    - Files: `src/api/job_manager.py`
 
-4. **Integrate recovery into job lifecycle** (3 points)
+3. **Integrate recovery into job lifecycle** (3 points)
    - On job failure, automatically attempt recovery
    - Track recovery attempts in job history
    - Return recovery_summary in job status response
    - Files: `src/api/job_manager.py`, `src/core/orchestrator.py`
 
-5. **Update operational runbook** (2 points)
+4. **Update operational runbook** (2 points)
    - Document deploy → health check → recovery workflow
    - Add examples for API key provisioning
    - Add troubleshooting guide for common recovery scenarios
    - Files: `docs/SELF_HEALING_RECOVERY.md`, `docs/SETUP.md`
 
 **Definition of Done**:
-- All 1081 tests pass (+ new tests for wave B features)
+- All regression tests pass (current baseline: 1081/1081)
+- New Phase 24 auth + batch tests added and passing
 - Decision telemetry visible in ops_dashboard JSON
 - API docs updated with auth + batch examples
 - Runbook covers full recovery workflow
@@ -194,10 +194,10 @@ Wave A (Complete) ✅
   └─ Recovery ✅
         ↓
 Wave B (In Progress)
-  ├─ Phase 15 (Observability) ← START HERE
-  │   └─ DecisionEvent + Correlation IDs
-  │       └─ Recovery telemetry integration
-  ├─ Phase 24 (API Ops) ← PARALLEL
+   ├─ Phase 15 (Observability) ✅
+   │   └─ DecisionEvent + Correlation IDs complete
+   │       └─ Recovery telemetry integration complete
+   ├─ Phase 24 (API Ops) ← CURRENT FOCUS
   │   └─ Auth + Batch + Webhooks
   │       └─ Recovery orchestration API
   └─ Phase 29 (Web UI) ← STAGE 2
