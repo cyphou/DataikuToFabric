@@ -4,11 +4,13 @@ This module centralizes lightweight observability primitives that can be used by
 - Orchestrator pipeline runs
 - Agent conversion decisions
 - API request lifecycle
+- Recovery orchestration and failure classification
 
 Design goals:
 - No heavy dependencies
 - Backward-compatible defaults
 - Deterministic JSON outputs for downstream ingestion
+- Extensible for recovery telemetry (Phase 15)
 """
 
 from __future__ import annotations
@@ -17,12 +19,27 @@ import contextvars
 import json
 import uuid
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# ── Decision categories for telemetry ─────────────────────────────────────────
+
+class DecisionCategory(str, Enum):
+    """Type of decision being recorded."""
+    CONVERSION = "conversion"  # Agent conversion decision (SQL, Python, visual recipe)
+    DEPLOYMENT = "deployment"  # Deployment-related decision
+    RECOVERY = "recovery"  # Health check or recovery strategy
+    AUTHENTICATION = "authentication"  # Credential/auth decision
+    VALIDATION = "validation"  # Schema or data validation decision
+    MIGRATION_PLANNING = "migration_planning"  # Wave planning or strategy
+    API_OPERATION = "api_operation"  # API request/response
+    UNKNOWN = "unknown"
 
 
 # ── Correlation ID context ────────────────────────────────────────────────────
@@ -56,7 +73,7 @@ class DecisionEvent:
     def __init__(
         self,
         *,
-        category: str,
+        category: str | DecisionCategory = DecisionCategory.UNKNOWN,
         decision: str,
         agent: str | None = None,
         asset_id: str | None = None,
@@ -64,8 +81,13 @@ class DecisionEvent:
         metadata: dict[str, Any] | None = None,
         correlation_id: str | None = None,
         timestamp: str | None = None,
+        # Recovery-specific fields (Phase 15)
+        recovery_strategy: str | None = None,
+        failure_classification: str | None = None,
+        confidence_score: float | None = None,
+        health_status: str | None = None,
     ) -> None:
-        self.category = category
+        self.category = category.value if isinstance(category, DecisionCategory) else category
         self.decision = decision
         self.agent = agent
         self.asset_id = asset_id
@@ -73,9 +95,14 @@ class DecisionEvent:
         self.metadata = metadata or {}
         self.correlation_id = correlation_id or get_correlation_id()
         self.timestamp = timestamp or datetime.now(timezone.utc).isoformat()
+        # Recovery telemetry
+        self.recovery_strategy = recovery_strategy
+        self.failure_classification = failure_classification
+        self.confidence_score = confidence_score
+        self.health_status = health_status
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "timestamp": self.timestamp,
             "correlation_id": self.correlation_id,
             "category": self.category,
@@ -85,6 +112,16 @@ class DecisionEvent:
             "reason": self.reason,
             "metadata": self.metadata,
         }
+        # Include recovery fields if present
+        if self.recovery_strategy:
+            d["recovery_strategy"] = self.recovery_strategy
+        if self.failure_classification:
+            d["failure_classification"] = self.failure_classification
+        if self.confidence_score is not None:
+            d["confidence_score"] = self.confidence_score
+        if self.health_status:
+            d["health_status"] = self.health_status
+        return d
 
 
 class DecisionTelemetry:
@@ -97,12 +134,16 @@ class DecisionTelemetry:
     def record(
         self,
         *,
-        category: str,
+        category: str | DecisionCategory = DecisionCategory.UNKNOWN,
         decision: str,
         agent: str | None = None,
         asset_id: str | None = None,
         reason: str | None = None,
         metadata: dict[str, Any] | None = None,
+        recovery_strategy: str | None = None,
+        failure_classification: str | None = None,
+        confidence_score: float | None = None,
+        health_status: str | None = None,
     ) -> None:
         event = DecisionEvent(
             category=category,
@@ -112,16 +153,22 @@ class DecisionTelemetry:
             reason=reason,
             metadata=metadata,
             correlation_id=self.correlation_id,
+            recovery_strategy=recovery_strategy,
+            failure_classification=failure_classification,
+            confidence_score=confidence_score,
+            health_status=health_status,
         )
         self._events.append(event)
         logger.info(
             "decision_telemetry",
             correlation_id=self.correlation_id,
-            category=category,
+            category=str(category),
             agent=agent,
             asset_id=asset_id,
             decision=decision,
             reason=reason,
+            recovery_strategy=recovery_strategy,
+            failure_classification=failure_classification,
         )
 
     @property
@@ -131,18 +178,37 @@ class DecisionTelemetry:
     def summary(self) -> dict[str, Any]:
         by_category: dict[str, int] = {}
         by_agent: dict[str, int] = {}
+        recovery_by_strategy: dict[str, int] = {}
+        failures_by_classification: dict[str, int] = {}
+        health_checks_by_status: dict[str, int] = {}
 
         for e in self._events:
             by_category[e.category] = by_category.get(e.category, 0) + 1
             if e.agent:
                 by_agent[e.agent] = by_agent.get(e.agent, 0) + 1
+            if e.recovery_strategy:
+                recovery_by_strategy[e.recovery_strategy] = recovery_by_strategy.get(e.recovery_strategy, 0) + 1
+            if e.failure_classification:
+                failures_by_classification[e.failure_classification] = failures_by_classification.get(e.failure_classification, 0) + 1
+            if e.health_status:
+                health_checks_by_status[e.health_status] = health_checks_by_status.get(e.health_status, 0) + 1
 
-        return {
+        summary = {
             "correlation_id": self.correlation_id,
             "events_count": len(self._events),
             "by_category": by_category,
             "by_agent": by_agent,
         }
+        
+        # Add recovery metrics if any recovery events recorded
+        if recovery_by_strategy or failures_by_classification:
+            summary["recovery"] = {
+                "strategies_used": recovery_by_strategy,
+                "failure_classifications": failures_by_classification,
+                "health_check_statuses": health_checks_by_status,
+            }
+        
+        return summary
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -168,6 +234,7 @@ class OpsDashboardWriter:
         decision_telemetry: DecisionTelemetry,
         manifests: dict[str, Any] | None = None,
         snapshots: dict[str, Any] | None = None,
+        recovery_summary: dict[str, Any] | None = None,
     ) -> Path:
         payload = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -179,6 +246,10 @@ class OpsDashboardWriter:
             "manifests": manifests or {},
             "snapshots": snapshots or {},
         }
+        
+        # Include recovery summary if provided (Phase 15)
+        if recovery_summary:
+            payload["recovery"] = recovery_summary
 
         path = self.output_dir / f"ops_dashboard_{correlation_id}.json"
         path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")

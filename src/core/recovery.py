@@ -23,10 +23,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 from src.core.logger import get_logger
 from src.core.observability import get_correlation_id
+
+if TYPE_CHECKING:
+    from src.core.observability import DecisionTelemetry
 
 logger = get_logger(__name__)
 
@@ -367,6 +370,7 @@ class RecoveryOrchestrator:
         deployment_id: str,
         project_key: str,
         state_file: Path | None = None,
+        decision_telemetry: DecisionTelemetry | None = None,
     ):
         self.deployment_id = deployment_id
         self.project_key = project_key
@@ -375,6 +379,7 @@ class RecoveryOrchestrator:
         self.detector = FailureDetector()
         self.policies: dict[FailureClassification, RecoveryPolicy] = {}
         self.probes: dict[str, list[HealthProbe]] = {}  # asset_id → probes
+        self.decision_telemetry = decision_telemetry  # Optional telemetry recorder (Phase 15)
 
     def register_policy(self, policy: RecoveryPolicy) -> None:
         """Register a recovery policy."""
@@ -426,6 +431,22 @@ class RecoveryOrchestrator:
             probe_details=details,
             checked_at=datetime.now(timezone.utc).isoformat(),
         )
+        
+        # Record health check decision event (Phase 15)
+        if self.decision_telemetry:
+            self.decision_telemetry.record(
+                category="recovery",
+                decision="health_check",
+                asset_id=asset_id,
+                reason=f"Health probes: {healthy} healthy, {degraded} degraded, {unhealthy} unhealthy",
+                health_status=overall.value,
+                metadata={
+                    "probes_run": len(asset_probes),
+                    "probes_healthy": healthy,
+                    "probes_degraded": degraded,
+                    "probes_unhealthy": unhealthy,
+                }
+            )
 
         return result
 
@@ -433,7 +454,24 @@ class RecoveryOrchestrator:
         self, asset_id: str, error_message: str, asset_type: str
     ) -> FailureDetectionResult:
         """Classify a failure for the given asset."""
-        return self.detector.detect(error_message, {"asset_ids": [asset_id], "type": asset_type})
+        result = self.detector.detect(error_message, {"asset_ids": [asset_id], "type": asset_type})
+        
+        # Record failure classification decision event (Phase 15)
+        if self.decision_telemetry:
+            self.decision_telemetry.record(
+                category="recovery",
+                decision="failure_detected",
+                asset_id=asset_id,
+                reason=result.root_cause,
+                failure_classification=result.classification.value,
+                confidence_score=result.confidence,
+                metadata={
+                    "is_transient": result.is_transient,
+                    "affected_assets": result.affected_assets,
+                }
+            )
+        
+        return result
 
     def get_recovery_strategy(
         self, classification: FailureClassification, asset_type: str
@@ -460,12 +498,35 @@ class RecoveryOrchestrator:
         breaker = self.state.circuit_breakers[asset_id]
         if not breaker.can_attempt_recovery():
             logger.warning(f"Circuit breaker OPEN for {asset_id}, skipping recovery")
+            
+            # Record circuit breaker state decision (Phase 15)
+            if self.decision_telemetry:
+                self.decision_telemetry.record(
+                    category="recovery",
+                    decision="recovery_blocked",
+                    asset_id=asset_id,
+                    reason="Circuit breaker is OPEN",
+                    metadata={
+                        "circuit_breaker_state": breaker.state.value,
+                        "failure_count": breaker.failure_count,
+                    }
+                )
             return None
 
         # Find policy
         policy = self.get_recovery_strategy(classification, asset_type)
         if not policy:
             logger.info(f"No recovery policy for {classification} on {asset_type}")
+            
+            # Record no policy found decision (Phase 15)
+            if self.decision_telemetry:
+                self.decision_telemetry.record(
+                    category="recovery",
+                    decision="no_policy",
+                    asset_id=asset_id,
+                    reason=f"No recovery policy for {classification}",
+                    failure_classification=classification.value,
+                )
             return None
 
         # Create recovery action
@@ -479,6 +540,16 @@ class RecoveryOrchestrator:
                 f"Max recovery attempts ({policy.max_attempts}) exceeded for {asset_id}"
             )
             breaker.record_failure()
+            
+            # Record max attempts exceeded decision (Phase 15)
+            if self.decision_telemetry:
+                self.decision_telemetry.record(
+                    category="recovery",
+                    decision="max_attempts_exceeded",
+                    asset_id=asset_id,
+                    reason=f"Max recovery attempts ({policy.max_attempts}) exceeded",
+                    recovery_strategy=policy.strategy.value,
+                )
             return None
 
         action = RecoveryAction(
@@ -497,6 +568,23 @@ class RecoveryOrchestrator:
             f"Recovery action {recovery_id}: {policy.strategy.value} for "
             f"{asset_id} (attempt {attempt_num}/{policy.max_attempts})"
         )
+        
+        # Record recovery strategy decision event (Phase 15)
+        if self.decision_telemetry:
+            self.decision_telemetry.record(
+                category="recovery",
+                decision="recovery_started",
+                asset_id=asset_id,
+                reason=f"Classification: {classification.value}",
+                recovery_strategy=policy.strategy.value,
+                failure_classification=classification.value,
+                metadata={
+                    "recovery_id": recovery_id,
+                    "attempt_number": attempt_num,
+                    "max_attempts": policy.max_attempts,
+                    "backoff_seconds": policy.backoff_seconds,
+                }
+            )
 
         return action
 
@@ -514,6 +602,25 @@ class RecoveryOrchestrator:
                     breaker.record_success()
 
                 logger.info(f"Recovery action {recovery_id} succeeded")
+                
+                # Record recovery success decision event (Phase 15)
+                if self.decision_telemetry:
+                    self.decision_telemetry.record(
+                        category="recovery",
+                        decision="recovery_succeeded",
+                        asset_id=action.asset_id,
+                        reason=f"Recovery action {recovery_id} completed successfully",
+                        recovery_strategy=action.strategy.value,
+                        metadata={
+                            "recovery_id": recovery_id,
+                            "attempt_number": action.attempt_number,
+                            "duration_seconds": (
+                                (datetime.fromisoformat(action.completed_at) - datetime.fromisoformat(action.started_at)).total_seconds()
+                                if action.completed_at else None
+                            ),
+                            "details": action.details,
+                        }
+                    )
                 break
 
         self.state.last_updated = datetime.now(timezone.utc).isoformat()
@@ -532,6 +639,25 @@ class RecoveryOrchestrator:
                     breaker.record_failure()
 
                 logger.warning(f"Recovery action {recovery_id} failed")
+                
+                # Record recovery failure decision event (Phase 15)
+                if self.decision_telemetry:
+                    self.decision_telemetry.record(
+                        category="recovery",
+                        decision="recovery_failed",
+                        asset_id=action.asset_id,
+                        reason=f"Recovery action {recovery_id} failed",
+                        recovery_strategy=action.strategy.value,
+                        metadata={
+                            "recovery_id": recovery_id,
+                            "attempt_number": action.attempt_number,
+                            "duration_seconds": (
+                                (datetime.fromisoformat(action.completed_at) - datetime.fromisoformat(action.started_at)).total_seconds()
+                                if action.completed_at else None
+                            ),
+                            "details": action.details,
+                        }
+                    )
                 break
 
         self.state.last_updated = datetime.now(timezone.utc).isoformat()
