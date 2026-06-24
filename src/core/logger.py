@@ -9,7 +9,12 @@ from pathlib import Path
 import structlog
 
 
-def setup_logging(level: str = "INFO", log_format: str = "json", log_file: str | None = None) -> None:
+def setup_logging(
+    level: str = "INFO",
+    log_format: str = "json",
+    log_file: str | None = None,
+    redact_secrets: bool = True,
+) -> None:
     """Configure structured logging for the migration toolkit."""
     log_level = getattr(logging, level.upper(), logging.INFO)
 
@@ -19,6 +24,12 @@ def setup_logging(level: str = "INFO", log_format: str = "json", log_file: str |
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
     ]
+
+    if redact_secrets:
+        # Lazy import to avoid import cycles during module initialisation.
+        from src.core.secrets import redaction_log_processor
+
+        processors.append(redaction_log_processor)
 
     if log_format == "json":
         processors.append(structlog.processors.JSONRenderer())

@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--quiet` / `-q` flag to suppress progress bars
 - `interactive` command — guided migration wizard with prompts for project, workspace, agent selection
 - `config validate` subcommand — validates YAML syntax, Pydantic schema, env vars, timeout settings
+- Dataiku TLS configuration support with `verify_ssl` and `ca_bundle_path`
+- `validate_config()` TLS warnings for insecure mode (`verify_ssl=false`) and missing CA bundle paths
 - `status` command — shows current migration state from registry (assets by type/state, agent results, checkpoints)
 - `--output-format` / `-f` flag (table/json/yaml) on discover, migrate, validate, config validate, status
 - `validate_config()` function in `core/config.py` — returns structured issues list with error/warning levels

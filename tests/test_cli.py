@@ -17,6 +17,8 @@ import yaml
 from click.testing import CliRunner
 
 from src.cli import cli, _format_output, _format_table
+from src.core.registry import AssetRegistry
+from src.models.asset import Asset, AssetType
 
 
 @pytest.fixture()
@@ -87,7 +89,7 @@ class TestHelp:
     def test_main_help(self, runner):
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0
-        for cmd in ("discover", "migrate", "validate", "report", "config", "status", "interactive"):
+        for cmd in ("discover", "migrate", "validate", "report", "config", "status", "plan", "interactive"):
             assert cmd in result.output
 
     def test_discover_help(self, runner):
@@ -371,6 +373,64 @@ class TestStatus:
         assert "project_key" in data
 
 
+# ── Plan ─────────────────────────────────────────────────────
+
+class TestPlan:
+    def test_plan_help(self, runner):
+        result = runner.invoke(cli, ["plan", "--help"])
+        assert result.exit_code == 0
+        assert "--projects" in result.output
+        assert "--wave-capacity" in result.output
+
+    def test_plan_json(self, runner, config_file, tmp_path):
+        env = {"TEST_DATAIKU_KEY": "fake-key-123"}
+        output_dir = tmp_path / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        reg1 = AssetRegistry(project_key="PROJ_A", registry_path=output_dir / "PROJ_A_registry.json")
+        reg1.add_asset(Asset(id="a1", name="Recipe A", type=AssetType.RECIPE_SQL, source_project="PROJ_A", metadata={"payload": "SELECT 1"}))
+        reg1.add_asset(Asset(id="a2", name="Dataset A", type=AssetType.DATASET, source_project="PROJ_A", metadata={"row_count": 10_000, "type": "csv"}))
+        reg1.save()
+
+        reg2 = AssetRegistry(project_key="PROJ_B", registry_path=output_dir / "PROJ_B_registry.json")
+        reg2.add_asset(Asset(id="b1", name="Recipe B1", type=AssetType.RECIPE_SQL, source_project="PROJ_B", metadata={"payload": "SELECT NVL(a,b) FROM t"}))
+        reg2.add_asset(Asset(id="b2", name="Recipe B2", type=AssetType.RECIPE_PYTHON, source_project="PROJ_B", metadata={"payload": "import dataiku\n"}))
+        reg2.add_asset(Asset(id="b3", name="Dataset B", type=AssetType.DATASET, source_project="PROJ_B", metadata={"row_count": 2_000_000, "type": "parquet"}))
+        reg2.save()
+
+        cfg = yaml.safe_load(Path(config_file).read_text())
+        cfg["migration"]["output_dir"] = str(output_dir)
+        plan_cfg = tmp_path / "plan_config.yaml"
+        plan_cfg.write_text(yaml.dump(cfg))
+
+        result = runner.invoke(cli, ["plan", "-p", "PROJ_A,PROJ_B", "-c", str(plan_cfg), "-f", "json"], env=env)
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["summary"]["total_projects"] == 2
+        assert len(data["project_estimates"]) == 2
+        assert len(data["waves"]) >= 1
+
+    def test_plan_html_output(self, runner, config_file, tmp_path):
+        env = {"TEST_DATAIKU_KEY": "fake-key-123"}
+        output_dir = tmp_path / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        reg = AssetRegistry(project_key="PROJ_HTML", registry_path=output_dir / "PROJ_HTML_registry.json")
+        reg.add_asset(Asset(id="h1", name="Recipe H", type=AssetType.RECIPE_SQL, source_project="PROJ_HTML", metadata={"payload": "SELECT 1"}))
+        reg.save()
+
+        cfg = yaml.safe_load(Path(config_file).read_text())
+        cfg["migration"]["output_dir"] = str(output_dir)
+        plan_cfg = tmp_path / "plan_html_config.yaml"
+        plan_cfg.write_text(yaml.dump(cfg))
+
+        report_path = tmp_path / "wave_plan.html"
+        result = runner.invoke(cli, ["plan", "-p", "PROJ_HTML", "-c", str(plan_cfg), "-f", "html", "-o", str(report_path)], env=env)
+        assert result.exit_code == 0
+        assert report_path.exists()
+        assert "Enterprise Wave Plan" in report_path.read_text(encoding="utf-8")
+
+
 # ── Interactive ──────────────────────────────────────────────
 
 class TestInteractive:
@@ -491,6 +551,47 @@ class TestOrchestratorPlanStatus:
         finally:
             os.environ.pop("TEST_DATAIKU_KEY", None)
 
+    def test_build_orchestrator_passes_dataiku_tls_settings(self, tmp_path):
+        from src.cli import _build_orchestrator
+
+        cfg = {
+            "dataiku": {
+                "url": "https://fake-dataiku.local",
+                "api_key_env": "TEST_DATAIKU_KEY",
+                "project_key": "CLI_TEST",
+                "verify_ssl": False,
+                "ca_bundle_path": "/tmp/custom-ca.pem",
+            },
+            "fabric": {"workspace_id": "ws-test-000"},
+            "migration": {
+                "output_dir": str(tmp_path / "output"),
+                "fail_fast": False,
+                "parallel_agents": False,
+            },
+            "orchestrator": {
+                "max_retries": 1,
+                "retry_delay_seconds": 0,
+                "agent_timeout_seconds": 10,
+            },
+            "logging": {
+                "level": "WARNING",
+                "format": "text",
+            },
+        }
+        config_path = tmp_path / "tls-config.yaml"
+        config_path.write_text(yaml.dump(cfg))
+
+        os.environ["TEST_DATAIKU_KEY"] = "fake"
+        try:
+            with patch("src.cli.DataikuClient") as mock_client:
+                _build_orchestrator(str(config_path))
+                assert mock_client.called
+                kwargs = mock_client.call_args.kwargs
+                assert kwargs["verify_ssl"] is False
+                assert kwargs["ca_bundle_path"] == "/tmp/custom-ca.pem"
+        finally:
+            os.environ.pop("TEST_DATAIKU_KEY", None)
+
 
 # ── Config Validate Function ─────────────────────────────────
 
@@ -545,3 +646,40 @@ class TestConfigValidateFunction:
         path.write_text(yaml.dump(cfg))
         issues = validate_config(str(path))
         assert any("timeout" in i["message"].lower() for i in issues)
+
+    def test_validate_config_verify_ssl_disabled_warning(self, tmp_path):
+        from src.core.config import validate_config
+
+        cfg = {
+            "dataiku": {
+                "url": "https://x.local",
+                "api_key_env": "X",
+                "project_key": "X",
+                "verify_ssl": False,
+            },
+            "fabric": {"workspace_id": "ws"},
+        }
+        path = tmp_path / "tls-off.yaml"
+        path.write_text(yaml.dump(cfg))
+
+        issues = validate_config(str(path))
+        assert any("verify_ssl=false" in i["message"] for i in issues)
+
+    def test_validate_config_missing_ca_bundle_warning(self, tmp_path):
+        from src.core.config import validate_config
+
+        cfg = {
+            "dataiku": {
+                "url": "https://x.local",
+                "api_key_env": "X",
+                "project_key": "X",
+                "verify_ssl": True,
+                "ca_bundle_path": str(tmp_path / "missing-ca.pem"),
+            },
+            "fabric": {"workspace_id": "ws"},
+        }
+        path = tmp_path / "missing-ca.yaml"
+        path.write_text(yaml.dump(cfg))
+
+        issues = validate_config(str(path))
+        assert any("CA bundle path does not exist" in i["message"] for i in issues)

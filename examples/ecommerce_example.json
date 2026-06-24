@@ -1,0 +1,355 @@
+{
+  "metadata": {
+    "title": "E-Commerce Analytics Real-World Example",
+    "description": "Production-grade Dataiku project with multi-source data fusion, ML scoring, and daily incremental loading. This example demonstrates the DataikuToFabric toolkit migration capabilities.",
+    "complexity": "advanced",
+    "estimated_migration_time_hours": 16,
+    "created_date": "2026-06-24",
+    "dataiku_version": "13.0",
+    "project_structure": {
+      "name": "ECOMMERCE_ANALYTICS",
+      "key": "ECOMM_ANALYTICS",
+      "owner": "analytics_team",
+      "description": "Multi-channel e-commerce attribution, customer lifetime value, churn prediction",
+      "status": "ACTIVE",
+      "tags": ["production", "ml", "incremental_loading", "multi_source", "real_example"]
+    }
+  },
+  "assets": {
+    "connections": [
+      {
+        "id": "oracle_erp",
+        "type": "Oracle",
+        "description": "Legacy ERP system - Order history, inventory, GL",
+        "host": "oracle-prod.internal",
+        "port": 1521,
+        "database": "ERPDB",
+        "ssl_enabled": true
+      },
+      {
+        "id": "postgres_warehouse",
+        "type": "PostgreSQL",
+        "description": "Analytical warehouse - Dimension tables, reference data",
+        "host": "postgres-analytics.aws.region.rds.amazonaws.com",
+        "port": 5432,
+        "database": "analytics_prod",
+        "ssl_enabled": true
+      },
+      {
+        "id": "s3_events",
+        "type": "S3",
+        "description": "Event stream - Clickstream data in Parquet",
+        "bucket": "company-analytics-prod",
+        "path_prefix": "events/clickstream/",
+        "region": "us-east-1",
+        "partitioned": true,
+        "partition_format": "year={YYYY}/month={MM}/day={DD}"
+      },
+      {
+        "id": "azure_blob",
+        "type": "AzureBlobStorage",
+        "description": "External ML model artifacts and scoring datasets",
+        "account": "company.blob.core.windows.net",
+        "container": "ml-artifacts",
+        "sas_token_ref": "secure_credential"
+      },
+      {
+        "id": "snowflake_external",
+        "type": "Snowflake",
+        "description": "Third-party vendor enrichment data",
+        "warehouse": "ANALYTICS",
+        "database": "VENDOR_DATA",
+        "schema": "PUBLIC"
+      },
+      {
+        "id": "mongodb_events",
+        "type": "MongoDB",
+        "description": "Real-time events collection - NoSQL event log",
+        "host": "mongodb-prod.mongodb.net",
+        "database": "events_prod",
+        "collection": "user_events"
+      }
+    ],
+    "datasets": [
+      {
+        "id": "raw_orders",
+        "type": "database",
+        "source_connection": "oracle_erp",
+        "table": "OE_ORDERS",
+        "query": "SELECT * FROM OE_ORDERS WHERE order_date >= TRUNC(SYSDATE) - 90",
+        "incremental_key": "order_date",
+        "refresh_interval": "daily",
+        "row_count_sample": 2500000,
+        "schema": [
+          { "name": "order_id", "type": "bigint", "nullable": false, "key": true },
+          { "name": "customer_id", "type": "bigint", "nullable": false },
+          { "name": "order_date", "type": "timestamp", "nullable": false },
+          { "name": "total_amount", "type": "decimal(18,2)", "nullable": false },
+          { "name": "status", "type": "varchar(50)", "nullable": false }
+        ]
+      },
+      {
+        "id": "raw_clickstream",
+        "type": "filesystem",
+        "source_connection": "s3_events",
+        "format": "parquet",
+        "partitioned": true,
+        "partition_cols": ["year", "month", "day"],
+        "retention_days": 365,
+        "row_count_sample": 50000000,
+        "incremental_key": "event_timestamp"
+      },
+      {
+        "id": "dim_customer",
+        "type": "database",
+        "source_connection": "postgres_warehouse",
+        "table": "dim_customer",
+        "query": "SELECT * FROM dim_customer",
+        "refresh_interval": "daily",
+        "row_count_sample": 500000,
+        "description": "Slowly Changing Dimension Type 2 - Customer master"
+      },
+      {
+        "id": "agg_daily_metrics",
+        "type": "database",
+        "source_connection": "postgres_warehouse",
+        "table": "agg_daily_metrics",
+        "managed": true,
+        "incremental_key": "metric_date",
+        "refresh_interval": "daily",
+        "row_count_sample": 36500,
+        "description": "Pre-aggregated daily performance KPIs"
+      },
+      {
+        "id": "ml_features",
+        "type": "filesystem",
+        "source_connection": "azure_blob",
+        "format": "parquet",
+        "path": "features/training/",
+        "description": "Engineered features for ML model training"
+      }
+    ],
+    "recipes": [
+      {
+        "id": "recipe_00_ingest_orders",
+        "type": "sql",
+        "source_database": "oracle_erp",
+        "input_datasets": ["raw_orders"],
+        "output_dataset": "stg_orders_cleaned",
+        "complexity": "medium",
+        "sql_dialect": "oracle",
+        "description": "Cleanse and standardize order records from Oracle ERP",
+        "estimated_rows_output": 2500000,
+        "pattern": "incremental_refresh",
+        "logic_snippet": "CAST(order_id AS VARCHAR2(20)), UPPER(status), CASE WHEN status='CANCELLED' THEN NULL ELSE total_amount END AS valid_amount"
+      },
+      {
+        "id": "recipe_01_ingest_clickstream",
+        "type": "python",
+        "input_datasets": ["raw_clickstream"],
+        "output_dataset": "stg_clickstream_parsed",
+        "complexity": "high",
+        "description": "Parse JSON events, detect bot traffic, enrich with GeoIP",
+        "estimated_rows_output": 45000000,
+        "logic_snippet": "import pandas as pd; df = dataiku.Dataset('raw_clickstream').get_dataframe(); df['parsed_event'] = df['event_json'].apply(json.loads)"
+      },
+      {
+        "id": "recipe_02_orders_join_customer",
+        "type": "visual",
+        "visual_type": "join",
+        "left_dataset": "stg_orders_cleaned",
+        "right_dataset": "dim_customer",
+        "join_type": "inner",
+        "join_keys": ["customer_id"],
+        "output_dataset": "orders_with_customer_360",
+        "complexity": "medium",
+        "description": "Enrich orders with customer attributes"
+      },
+      {
+        "id": "recipe_03_agg_customer_ltv",
+        "type": "sql",
+        "source_database": "postgres_warehouse",
+        "input_datasets": ["orders_with_customer_360", "stg_clickstream_parsed"],
+        "output_dataset": "customer_ltv_360",
+        "complexity": "high",
+        "sql_dialect": "postgresql",
+        "description": "Calculate customer lifetime value, engagement, retention metrics",
+        "pattern": "window_function",
+        "logic_snippet": "SUM(total_amount) OVER (PARTITION BY customer_id ORDER BY order_date), ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) as recency_rank"
+      },
+      {
+        "id": "recipe_04_feature_engineering",
+        "type": "python",
+        "input_datasets": ["customer_ltv_360"],
+        "output_dataset": "ml_features_engineered",
+        "complexity": "very_high",
+        "description": "Feature engineering for churn prediction model - RFM, propensity, behavioral signals",
+        "logic_snippet": "from sklearn.preprocessing import StandardScaler; scaler.fit_transform(features); polynomial_features.fit_transform(X)"
+      },
+      {
+        "id": "recipe_05_ml_scoring",
+        "type": "python",
+        "input_datasets": ["ml_features_engineered"],
+        "output_dataset": "customer_churn_scores",
+        "complexity": "very_high",
+        "description": "Score customers with trained churn prediction model (XGBoost), persist predictions",
+        "model_artifact": "churn_model_v2_xgboost.pkl",
+        "logic_snippet": "model = joblib.load('churn_model_v2_xgboost.pkl'); predictions = model.predict_proba(X)[:, 1]"
+      },
+      {
+        "id": "recipe_06_agg_daily_kpi",
+        "type": "visual",
+        "visual_type": "group_by",
+        "input_dataset": "orders_with_customer_360",
+        "group_by_cols": ["order_date", "customer_segment"],
+        "metrics": ["SUM(total_amount)", "COUNT(1)", "AVG(total_amount)"],
+        "output_dataset": "agg_daily_metrics",
+        "complexity": "low",
+        "description": "Aggregate daily KPIs by customer segment"
+      },
+      {
+        "id": "recipe_07_filter_high_value",
+        "type": "visual",
+        "visual_type": "filter",
+        "input_dataset": "customer_ltv_360",
+        "filter_condition": "customer_ltv > 10000 AND engagement_score > 75",
+        "output_dataset": "high_value_customers",
+        "complexity": "low",
+        "description": "Segment high-value customers for targeted campaigns"
+      },
+      {
+        "id": "recipe_08_quality_checks",
+        "type": "python",
+        "input_datasets": ["agg_daily_metrics", "customer_churn_scores"],
+        "output_dataset": "qa_check_results",
+        "complexity": "medium",
+        "description": "Data quality validation - null checks, distribution analysis, outlier detection",
+        "logic_snippet": "assert df[required_cols].notna().all(), 'Null values found'; assert (df['churn_score'] >= 0).all() and (df['churn_score'] <= 1).all()"
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "scenario_daily_pipeline",
+        "type": "scheduled",
+        "name": "Daily E-Commerce Pipeline",
+        "description": "Runs daily at 02:00 UTC - Ingest orders, clickstream, update dimensions, score churn",
+        "trigger": "cron",
+        "schedule": "0 2 * * * ",
+        "timezone": "UTC",
+        "steps": [
+          { "order": 1, "recipe": "recipe_00_ingest_orders", "timeout_minutes": 30 },
+          { "order": 2, "recipe": "recipe_01_ingest_clickstream", "timeout_minutes": 60 },
+          { "order": 3, "recipe": "recipe_02_orders_join_customer", "timeout_minutes": 45 },
+          { "order": 4, "recipe": "recipe_03_agg_customer_ltv", "timeout_minutes": 60 },
+          { "order": 5, "recipe": "recipe_04_feature_engineering", "timeout_minutes": 120 },
+          { "order": 6, "recipe": "recipe_05_ml_scoring", "timeout_minutes": 90 },
+          { "order": 7, "recipe": "recipe_06_agg_daily_kpi", "timeout_minutes": 30 },
+          { "order": 8, "recipe": "recipe_08_quality_checks", "timeout_minutes": 30 }
+        ],
+        "email_on_failure": "analytics@company.com",
+        "estimated_total_runtime_minutes": 375
+      },
+      {
+        "id": "scenario_weekly_export",
+        "type": "scheduled",
+        "name": "Weekly Analytics Export",
+        "description": "Runs every Sunday 04:00 UTC - Export metrics to data lake and BI tool",
+        "trigger": "cron",
+        "schedule": "0 4 ? * SUN",
+        "timezone": "UTC",
+        "steps": [
+          { "order": 1, "recipe": "recipe_06_agg_daily_kpi", "timeout_minutes": 30 },
+          { "order": 2, "recipe": "recipe_07_filter_high_value", "timeout_minutes": 20 }
+        ]
+      },
+      {
+        "id": "scenario_manual_retrain",
+        "type": "manual",
+        "name": "ML Model Retraining",
+        "description": "Manual trigger - Retrain churn prediction model with latest data (no schedule)",
+        "steps": [
+          { "order": 1, "recipe": "recipe_04_feature_engineering", "timeout_minutes": 120 },
+          { "order": 2, "recipe": "recipe_05_ml_scoring", "timeout_minutes": 90 }
+        ]
+      }
+    ],
+    "flow": {
+      "nodes": 9,
+      "edges": 12,
+      "dag": [
+        { "from": "raw_orders", "to": "recipe_00_ingest_orders" },
+        { "from": "recipe_00_ingest_orders", "to": "stg_orders_cleaned" },
+        { "from": "stg_orders_cleaned", "to": "recipe_02_orders_join_customer" },
+        { "from": "dim_customer", "to": "recipe_02_orders_join_customer" },
+        { "from": "recipe_02_orders_join_customer", "to": "orders_with_customer_360" },
+        { "from": "orders_with_customer_360", "to": "recipe_03_agg_customer_ltv" },
+        { "from": "raw_clickstream", "to": "recipe_01_ingest_clickstream" },
+        { "from": "recipe_01_ingest_clickstream", "to": "stg_clickstream_parsed" },
+        { "from": "stg_clickstream_parsed", "to": "recipe_03_agg_customer_ltv" },
+        { "from": "recipe_03_agg_customer_ltv", "to": "customer_ltv_360" },
+        { "from": "customer_ltv_360", "to": "recipe_04_feature_engineering" },
+        { "from": "recipe_04_feature_engineering", "to": "ml_features_engineered" },
+        { "from": "ml_features_engineered", "to": "recipe_05_ml_scoring" },
+        { "from": "recipe_05_ml_scoring", "to": "customer_churn_scores" },
+        { "from": "orders_with_customer_360", "to": "recipe_06_agg_daily_kpi" },
+        { "from": "recipe_06_agg_daily_kpi", "to": "agg_daily_metrics" }
+      ]
+    }
+  },
+  "migration_readiness": {
+    "supported_features": [
+      "Multi-database SQL recipes (Oracle + PostgreSQL)",
+      "Complex Python recipes with ML frameworks",
+      "Visual recipe transformations",
+      "Incremental loading patterns",
+      "Daily scheduled pipelines",
+      "Data quality checks",
+      "Window functions and aggregations"
+    ],
+    "migration_path": {
+      "connections": "→ Fabric Connections (via Azure Data Factory/Lakehouse)",
+      "sql_recipes": "→ Spark SQL / T-SQL (Warehouse DDL)",
+      "python_recipes": "→ Fabric Notebooks (PySpark + ML frameworks)",
+      "visual_recipes": "→ T-SQL views/queries (Warehouse)",
+      "scenarios": "→ Fabric Data Pipelines with Spark Job Definitions",
+      "flow": "→ Pipeline activity graph + dependencies"
+    },
+    "estimated_complexity": "Advanced (ML + incremental loading)",
+    "key_considerations": [
+      "Oracle to T-SQL dialect conversion",
+      "PostgreSQL window functions → Spark SQL equivalents",
+      "Python ML libraries (sklearn, XGBoost) must be in notebook environment",
+      "Incremental loading strategy differs in Fabric (Delta Lake + partition pruning)",
+      "Scheduled scenarios → Fabric pipelines with Spark Job Definitions",
+      "S3 Parquet → OneLake Lakehouse Table via Shortcuts"
+    ]
+  },
+  "test_coverage": {
+    "test_scenarios": [
+      {
+        "scenario": "Full DAG traversal",
+        "validates": "Lineage tracking across 9 recipes and 15+ datasets"
+      },
+      {
+        "scenario": "Multi-database conversion",
+        "validates": "Oracle SQL + PostgreSQL SQL with dialect translation"
+      },
+      {
+        "scenario": "Python ML recipe handling",
+        "validates": "Feature engineering + model scoring to Fabric Notebook"
+      },
+      {
+        "scenario": "Visual recipe to SQL",
+        "validates": "Group By, Filter, Join conversion to T-SQL"
+      },
+      {
+        "scenario": "Incremental loading pattern",
+        "validates": "Date-based incrementals to Delta Lake partitions"
+      },
+      {
+        "scenario": "Scheduled scenario conversion",
+        "validates": "Cron schedules → Fabric Pipeline triggers"
+      }
+    ]
+  }
+}

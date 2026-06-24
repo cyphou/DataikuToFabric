@@ -28,6 +28,32 @@ python -m src.cli --help
 - Ensure the API key has **read access** to the target project.
 - Generate a new key from Dataiku → Administration → API Keys.
 
+### `[SSL: CERTIFICATE_VERIFY_FAILED]` with Dataiku API
+
+Your Dataiku endpoint is likely using a private or self-signed certificate chain.
+
+- Preferred fix: trust your internal CA by setting `dataiku.ca_bundle_path` in `config/config.yaml`.
+- Temporary workaround for trusted internal environments: set `dataiku.verify_ssl: false`.
+
+Example:
+
+```yaml
+dataiku:
+  url: "https://your-dataiku-instance.company.com"
+  api_key_env: "DATAIKU_API_KEY"
+  project_key: "YOUR_PROJECT_KEY"
+  verify_ssl: true
+  ca_bundle_path: "/path/to/your/internal-ca-bundle.pem"
+```
+
+If you disable SSL verification, only do it on secure internal networks and revert to CA-based validation as soon as possible.
+
+You can also run configuration checks to detect risky TLS settings:
+
+```bash
+dataiku-to-fabric config validate config/config.yaml
+```
+
 ### `403 Forbidden` from Fabric REST API
 
 - Verify your Azure AD token has the `Fabric.ReadWrite.All` scope.

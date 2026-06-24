@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlparse, parse_qs
 
 from src.api.job_manager import JobManager, JobStatus
+from src.core.observability import get_correlation_id, new_correlation_id, set_correlation_id
 from src.core.registry import AssetRegistry
 
 
@@ -17,8 +18,44 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
     # Set by create_server()
     registry: AssetRegistry | None = None
     job_manager: JobManager | None = None
+    auth_mode: str = "none"  # none | api_key | bearer
+    auth_secret: str | None = None
+
+    def _ensure_correlation_id(self) -> str:
+        """Get correlation ID from request header or generate one."""
+        incoming = self.headers.get("X-Correlation-ID")
+        corr = incoming or get_correlation_id() or new_correlation_id("api")
+        set_correlation_id(corr)
+        return corr
+
+    def _is_authorized(self) -> bool:
+        """Return True if request auth passes based on configured mode."""
+        mode = (self.auth_mode or "none").lower()
+        if mode == "none":
+            return True
+
+        secret = self.auth_secret or ""
+        if not secret:
+            return False
+
+        if mode == "api_key":
+            provided = self.headers.get("X-API-Key", "")
+            return provided == secret
+
+        if mode == "bearer":
+            auth_header = self.headers.get("Authorization", "")
+            if not auth_header.lower().startswith("bearer "):
+                return False
+            token = auth_header.split(" ", 1)[1].strip()
+            return token == secret
+
+        return False
 
     def do_GET(self) -> None:
+        self._ensure_correlation_id()
+        if not self._is_authorized():
+            self._send_json({"error": "Unauthorized"}, 401)
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         params = parse_qs(parsed.query)
@@ -48,6 +85,10 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Not found"}, 404)
 
     def do_POST(self) -> None:
+        self._ensure_correlation_id()
+        if not self._is_authorized():
+            self._send_json({"error": "Unauthorized"}, 401)
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
 
@@ -78,6 +119,9 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
             return
         asset_type = params.get("type", [None])[0]
         state = params.get("state", [None])[0]
+        name_contains = params.get("name_contains", [None])[0]
+        page = max(1, int(params.get("page", [1])[0]))
+        page_size = max(1, min(500, int(params.get("page_size", [50])[0])))
 
         assets = self.registry.get_all()
 
@@ -85,9 +129,20 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
             assets = [a for a in assets if a.type.value == asset_type]
         if state:
             assets = [a for a in assets if a.state.value == state]
+        if name_contains:
+            assets = [a for a in assets if name_contains.lower() in a.name.lower()]
+
+        total = len(assets)
+        start = (page - 1) * page_size
+        end = start + page_size
+        assets = assets[start:end]
 
         self._send_json({
             "count": len(assets),
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size,
             "assets": [
                 {
                     "id": a.id,
@@ -127,9 +182,21 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
             return
         status_filter = params.get("status", [None])[0]
         status = JobStatus(status_filter) if status_filter else None
-        jobs = self.job_manager.list_jobs(status=status)
+        job_type = params.get("job_type", [None])[0]
+        page = max(1, int(params.get("page", [1])[0]))
+        page_size = max(1, min(500, int(params.get("page_size", [50])[0])))
+
+        jobs = self.job_manager.list_jobs(status=status, job_type=job_type)
+        total = len(jobs)
+        start = (page - 1) * page_size
+        end = start + page_size
+        jobs = jobs[start:end]
         self._send_json({
             "count": len(jobs),
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size,
             "jobs": [j.to_dict() for j in jobs],
         })
 
@@ -161,7 +228,12 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
 
         job_type = data.get("job_type", "migration")
         parameters = data.get("parameters", {})
-        job = self.job_manager.create_job(job_type=job_type, parameters=parameters)
+        webhook_url = data.get("webhook_url")
+        job = self.job_manager.create_job(
+            job_type=job_type,
+            parameters=parameters,
+            webhook_url=webhook_url,
+        )
         self._send_json(job.to_dict(), 201)
 
     def _handle_cancel_job(self, job_id: str) -> None:
@@ -175,9 +247,13 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": f"Cannot cancel job '{job_id}'"}, 400)
 
     def _send_json(self, data: dict[str, Any], status: int = 200) -> None:
-        body = json.dumps(data, default=str).encode("utf-8")
+        payload = dict(data)
+        payload.setdefault("correlation_id", get_correlation_id())
+        body = json.dumps(payload, default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        if payload.get("correlation_id"):
+            self.send_header("X-Correlation-ID", str(payload["correlation_id"]))
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -192,6 +268,8 @@ def create_server(
     port: int = 8080,
     registry: AssetRegistry | None = None,
     job_manager: JobManager | None = None,
+    auth_mode: str = "none",
+    auth_secret: str | None = None,
 ) -> HTTPServer:
     """Create and configure the migration API server.
 
@@ -206,6 +284,8 @@ def create_server(
     """
     MigrationAPIHandler.registry = registry
     MigrationAPIHandler.job_manager = job_manager or JobManager()
+    MigrationAPIHandler.auth_mode = auth_mode
+    MigrationAPIHandler.auth_secret = auth_secret
 
     server = HTTPServer((host, port), MigrationAPIHandler)
     return server

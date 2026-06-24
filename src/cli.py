@@ -14,9 +14,13 @@ from src.core.config import load_config, validate_config
 from src.core.logger import setup_logging
 from src.core.orchestrator import Orchestrator
 from src.core.registry import AssetRegistry
+from src.core.snapshot import RollbackEngine, SnapshotStore
 
 from src.connectors.dataiku_client import DataikuClient
 from src.connectors.fabric_client import FabricClient, _acquire_token
+from src.analyzers.project_analyzer import assess_project
+from src.analyzers.strategy_advisor import recommend_strategy
+from src.analyzers.wave_planner import build_enterprise_wave_plan, save_wave_plan_report
 
 # -- Agent imports --
 from src.agents.connection_agent import ConnectionMapperAgent
@@ -95,6 +99,8 @@ def _build_orchestrator(config_path: str) -> Orchestrator:
             api_key=cfg.dataiku.api_key,
             timeout=cfg.dataiku.timeout_seconds,
             max_retries=cfg.dataiku.max_retries,
+            verify_ssl=cfg.dataiku.verify_ssl,
+            ca_bundle_path=cfg.dataiku.ca_bundle_path,
         )
         orch.context.connectors["dataiku"] = dataiku_client
     except ValueError:
@@ -377,6 +383,48 @@ def status(config: str, fmt: str):
     click.echo(_format_output(status_data, fmt))
 
 
+# ── rollback ──────────────────────────────────────────────────
+
+@cli.command()
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+@click.option("--snapshot-id", required=True, help="Snapshot ID to restore from")
+@click.option("--asset-type", default=None, help="Optional asset type filter (e.g. recipe.sql)")
+@click.option("--dry-run", is_flag=True, default=False, help="Preview rollback impact without applying")
+@click.option("--output-format", "-f", "fmt", type=click.Choice(["table", "json", "yaml"]), default="table", help="Output format")
+def rollback(config: str, snapshot_id: str, asset_type: str | None, dry_run: bool, fmt: str):
+    """Plan or apply rollback using a pre-deploy snapshot."""
+    orch = _build_orchestrator(config)
+    orch.registry.load()
+
+    engine = RollbackEngine(SnapshotStore(Path(orch.config.deployment.snapshot_dir)))
+
+    if dry_run:
+        plan = engine.plan(snapshot_id, orch.registry, asset_type_filter=asset_type)
+        if plan is None:
+            click.echo(f"Snapshot not found: {snapshot_id}")
+            sys.exit(1)
+        click.echo(_format_output({
+            "mode": "dry-run",
+            "summary": plan.summary(),
+            "assets_to_restore": plan.assets_to_restore,
+            "assets_not_in_snapshot": plan.assets_not_in_snapshot,
+        }, fmt))
+        return
+
+    plan = engine.apply(snapshot_id, orch.registry, asset_type_filter=asset_type)
+    if plan is None:
+        click.echo(f"Snapshot not found: {snapshot_id}")
+        sys.exit(1)
+
+    orch.registry.save()
+    click.echo(_format_output({
+        "mode": "apply",
+        "summary": plan.summary(),
+        "assets_to_restore": plan.assets_to_restore,
+        "assets_not_in_snapshot": plan.assets_not_in_snapshot,
+    }, fmt))
+
+
 # ── interactive ───────────────────────────────────────────────
 
 @cli.command()
@@ -489,6 +537,53 @@ def assess(project: str, config: str, output_path: str | None, fmt: str):
     if output_path:
         save_assessment_report(result, output_path)
         click.echo(f"Report saved: {output_path}")
+
+
+# ── plan (Phase 28) ─────────────────────────────────────────
+
+@cli.command()
+@click.option("--projects", "-p", required=True, help="Comma-separated Dataiku project keys")
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+@click.option("--wave-capacity", default=40, show_default=True, type=int, help="Target effort points per wave")
+@click.option("--output", "-o", "output_path", default=None, help="Output HTML report path")
+@click.option("--output-format", "-f", "fmt", type=click.Choice(["table", "json", "html"]), default="table", help="Output format")
+def plan(projects: str, config: str, wave_capacity: int, output_path: str | None, fmt: str):
+    """Generate an enterprise migration wave plan."""
+    from src.analyzers.wave_planner import EnterpriseWavePlan
+
+    cfg = load_config(config)
+    output_dir = Path(cfg.migration.output_dir)
+
+    project_keys = [project.strip() for project in projects.split(",") if project.strip()]
+    if not project_keys:
+        click.echo("No projects provided.")
+        sys.exit(1)
+
+    project_entries = []
+    for project_key in project_keys:
+        registry = AssetRegistry(
+            project_key=project_key,
+            registry_path=output_dir / f"{project_key}_registry.json",
+        )
+        registry.load()
+        assessment = assess_project(registry)
+        recommendation = recommend_strategy(assessment, registry)
+        project_entries.append((registry, assessment, recommendation))
+
+    wave_plan: EnterpriseWavePlan = build_enterprise_wave_plan(
+        project_entries,
+        target_wave_capacity=wave_capacity,
+    )
+
+    if output_path:
+        save_wave_plan_report(wave_plan, output_path)
+        click.echo(f"Wave plan saved: {output_path}")
+
+    if fmt == "html":
+        click.echo(save_wave_plan_report(wave_plan, output_path or str(output_dir / "wave_plan.html")).read_text(encoding="utf-8"))
+        return
+
+    click.echo(_format_output(wave_plan.to_dict(), fmt))
 
 
 # ── qa (Phase 20) ────────────────────────────────────────────

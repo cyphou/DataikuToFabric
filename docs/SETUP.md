@@ -51,21 +51,59 @@ cp config/config.template.yaml config/config.yaml
 
 ```yaml
 dataiku:
-  host: "https://your-dataiku-instance.com"
-  api_key: "<DATAIKU_API_KEY>"
+  url: "https://your-dataiku-instance.com"
+  api_key_env: "DATAIKU_API_KEY"
   project_key: "MY_PROJECT"
+  timeout_seconds: 30
+  max_retries: 3
+  verify_ssl: true
+  ca_bundle_path: null
 
 fabric:
   workspace_id: "<FABRIC_WORKSPACE_GUID>"
-  tenant_id: "<AZURE_TENANT_ID>"
   lakehouse_name: "MigratedLakehouse"
   warehouse_name: "MigratedWarehouse"
+  auth_method: "azure_cli"
+  tenant_id_env: "AZURE_TENANT_ID"
+  client_id_env: "AZURE_CLIENT_ID"
+
+migration:
+  output_dir: "output"
+  parallel_agents: false
 
 orchestrator:
-  output_dir: "output"
-  parallel_agents: 4
   agent_timeout_seconds: 300
   circuit_breaker_threshold: 3
+```
+
+3. Set the Dataiku API key in an environment variable:
+
+```bash
+export DATAIKU_API_KEY="<YOUR_DATAIKU_API_KEY>"
+```
+
+PowerShell:
+
+```powershell
+$env:DATAIKU_API_KEY = "<YOUR_DATAIKU_API_KEY>"
+```
+
+### SSL/TLS for internal Dataiku endpoints
+
+For internal or self-signed certificate chains, prefer a custom CA bundle:
+
+```yaml
+dataiku:
+  verify_ssl: true
+  ca_bundle_path: "/path/to/internal-ca-bundle.pem"
+```
+
+As a temporary workaround in trusted internal environments, you can disable TLS verification:
+
+```yaml
+dataiku:
+  verify_ssl: false
+  ca_bundle_path: null
 ```
 
 > **Security:** Never commit `config/config.yaml` to version control. It is listed in `.gitignore`.

@@ -7,6 +7,7 @@ import threading
 import time
 import urllib.request
 import urllib.error
+from unittest.mock import patch
 
 import pytest
 
@@ -111,6 +112,38 @@ class TestJobManager:
         assert jm.get_job(j1.job_id) is None
         assert jm.get_job(j2.job_id) is not None
 
+    def test_webhook_called_on_complete(self):
+        jm = JobManager()
+        job = jm.create_job(job_type="test", webhook_url="https://example.test/hook")
+        jm.start_job(job.job_id)
+
+        with patch("urllib.request.urlopen"):
+            ok = jm.complete_job(job.job_id, result={"x": 1})
+
+        assert ok is True
+        updated = jm.get_job(job.job_id)
+        assert updated.webhook_notified is True
+
+    def test_webhook_error_captured(self):
+        jm = JobManager()
+        job = jm.create_job(job_type="test", webhook_url="https://example.test/hook")
+        jm.start_job(job.job_id)
+
+        with patch("urllib.request.urlopen", side_effect=RuntimeError("boom")):
+            jm.fail_job(job.job_id, "failed")
+
+        updated = jm.get_job(job.job_id)
+        assert updated.webhook_notified is False
+        assert "boom" in updated.webhook_error
+
+    def test_list_jobs_filter_job_type(self):
+        jm = JobManager()
+        jm.create_job(job_type="migration")
+        jm.create_job(job_type="validation")
+        filtered = jm.list_jobs(job_type="validation")
+        assert len(filtered) == 1
+        assert filtered[0].job_type == "validation"
+
 
 # ── API Server ────────────────────────────────────────────────
 
@@ -146,6 +179,17 @@ def _get(url: str) -> tuple[int, dict]:
         return e.code, json.loads(e.read())
 
 
+def _get_with_headers(url: str, headers: dict[str, str]) -> tuple[int, dict]:
+    req = urllib.request.Request(url)
+    for k, v in headers.items():
+        req.add_header(k, v)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
 def _post(url: str, data: dict | None = None) -> tuple[int, dict]:
     body = json.dumps(data or {}).encode()
     req = urllib.request.Request(url, data=body, method="POST")
@@ -163,6 +207,15 @@ class TestAPIServer:
         status, data = _get(f"{base}/api/health")
         assert status == 200
         assert data["status"] == "ok"
+        assert "correlation_id" in data
+
+    def test_health_uses_incoming_correlation_id(self, api_server):
+        base, *_ = api_server
+        status, data = _get_with_headers(
+            f"{base}/api/health", {"X-Correlation-ID": "test-corr-id-123"}
+        )
+        assert status == 200
+        assert data["correlation_id"] == "test-corr-id-123"
 
     def test_status(self, api_server):
         base, *_ = api_server
@@ -200,6 +253,29 @@ class TestAPIServer:
         assert status == 200
         assert data["count"] >= 1
 
+    def test_jobs_pagination_and_filter(self, api_server):
+        base, *_ = api_server
+        _post(f"{base}/api/jobs", {"job_type": "migration"})
+        _post(f"{base}/api/jobs", {"job_type": "validation"})
+        _post(f"{base}/api/jobs", {"job_type": "validation"})
+
+        status, data = _get(f"{base}/api/jobs?job_type=validation&page=1&page_size=1")
+        assert status == 200
+        assert data["page"] == 1
+        assert data["page_size"] == 1
+        assert data["total"] >= 2
+        assert data["count"] == 1
+        assert data["jobs"][0]["job_type"] == "validation"
+
+    def test_assets_pagination_and_name_filter(self, api_server):
+        base, *_ = api_server
+        status, data = _get(f"{base}/api/assets?name_contains=test&page=1&page_size=1")
+        assert status == 200
+        assert data["page"] == 1
+        assert data["page_size"] == 1
+        assert data["count"] <= 1
+        assert data["total"] >= 1
+
     def test_cancel_job(self, api_server):
         base, *_ = api_server
         _, create_data = _post(f"{base}/api/jobs", {"job_type": "cancel_test"})
@@ -211,3 +287,59 @@ class TestAPIServer:
         base, *_ = api_server
         status, data = _get(f"{base}/api/nonexistent")
         assert status == 404
+
+    def test_auth_api_key_mode(self, tmp_path):
+        reg = AssetRegistry(project_key="API_TEST", registry_path=tmp_path / "reg.json")
+        server = create_server(
+            host="127.0.0.1",
+            port=0,
+            registry=reg,
+            job_manager=JobManager(),
+            auth_mode="api_key",
+            auth_secret="secret123",
+        )
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        time.sleep(0.1)
+
+        try:
+            status, _ = _get(f"http://127.0.0.1:{port}/api/health")
+            assert status == 401
+
+            status, data = _get_with_headers(
+                f"http://127.0.0.1:{port}/api/health",
+                {"X-API-Key": "secret123"},
+            )
+            assert status == 200
+            assert data["status"] == "ok"
+        finally:
+            server.shutdown()
+
+    def test_auth_bearer_mode(self, tmp_path):
+        reg = AssetRegistry(project_key="API_TEST", registry_path=tmp_path / "reg.json")
+        server = create_server(
+            host="127.0.0.1",
+            port=0,
+            registry=reg,
+            job_manager=JobManager(),
+            auth_mode="bearer",
+            auth_secret="token-xyz",
+        )
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        time.sleep(0.1)
+
+        try:
+            status, _ = _get(f"http://127.0.0.1:{port}/api/health")
+            assert status == 401
+
+            status, data = _get_with_headers(
+                f"http://127.0.0.1:{port}/api/health",
+                {"Authorization": "Bearer token-xyz"},
+            )
+            assert status == 200
+            assert data["status"] == "ok"
+        finally:
+            server.shutdown()

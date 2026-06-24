@@ -19,11 +19,20 @@ class DataikuClient:
     Reference: https://doc.dataiku.com/dss/latest/publicapi/rest.html
     """
 
-    def __init__(self, base_url: str, api_key: str, timeout: int = 30, max_retries: int = 3):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        timeout: int = 30,
+        max_retries: int = 3,
+        verify_ssl: bool = True,
+        ca_bundle_path: str | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
         self._max_retries = max_retries
+        self._verify = ca_bundle_path if ca_bundle_path else verify_ssl
         self._client: httpx.AsyncClient | None = None
 
     async def _ensure_client(self) -> httpx.AsyncClient:
@@ -31,7 +40,7 @@ class DataikuClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=self._timeout,
-                verify=True,
+                verify=self._verify,
                 headers={"Content-Type": "application/json"},
             )
         return self._client

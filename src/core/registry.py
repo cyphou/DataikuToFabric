@@ -23,6 +23,10 @@ class AssetRegistry:
         """Add a new asset to the registry."""
         self._assets[asset.id] = asset
 
+    def register_asset(self, asset: Asset) -> None:
+        """Alias for add_asset used by rollback/snapshot operations."""
+        self.add_asset(asset)
+
     def update_state(self, asset_id: str, new_state: MigrationState) -> None:
         """Transition an asset to a new state."""
         asset = self._assets[asset_id]
@@ -61,6 +65,10 @@ class AssetRegistry:
 
     def get_all(self) -> list[Asset]:
         return list(self._assets.values())
+
+    def list_assets(self) -> list[Asset]:
+        """Alias for get_all used by snapshot/rollback operations."""
+        return self.get_all()
 
     def get_dependencies(self, asset_id: str) -> list[Asset]:
         """Get all assets that this asset depends on."""

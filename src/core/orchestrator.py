@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -11,8 +12,17 @@ import networkx as nx
 
 from src.agents.base_agent import AgentResult, AgentStatus, BaseAgent
 from src.core.config import AppConfig
+from src.core.deployment import DeploymentManifestStore, IdempotencyChecker
 from src.core.logger import get_logger
+from src.core.observability import (
+    DecisionTelemetry,
+    OpsDashboardWriter,
+    get_correlation_id,
+    new_correlation_id,
+    set_correlation_id,
+)
 from src.core.registry import AssetRegistry
+from src.core.snapshot import SnapshotStore, capture_snapshot
 
 logger = get_logger(__name__)
 
@@ -110,6 +120,46 @@ class Orchestrator:
         self._results: dict[str, AgentResult] = {}
         self._consecutive_failures: int = 0
         self._checkpoints: list[Path] = []
+
+    def _new_run_id(self) -> str:
+        """Generate a stable run ID for manifests and snapshots."""
+        return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    @staticmethod
+    def _asset_content_payload(asset: Any) -> dict[str, Any]:
+        """Build deterministic asset payload used for idempotency hashing."""
+        try:
+            data = asset.model_dump(mode="json")
+        except Exception:
+            data = dict(vars(asset))
+
+        # Volatile timestamp fields must be ignored to avoid false-positive changes.
+        data.pop("timestamps", None)
+        return data
+
+    @staticmethod
+    def _fabric_item_id(asset: Any) -> str | None:
+        """Extract common Fabric item identifiers from target metadata."""
+        target = getattr(asset, "target_fabric_asset", None) or {}
+        if not isinstance(target, dict):
+            return None
+        return target.get("id") or target.get("item_id") or target.get("fabric_item_id")
+
+    def _snapshot_store(self) -> SnapshotStore:
+        """Return the configured snapshot store."""
+        dep_cfg = getattr(self.config, "deployment", None)
+        snapshot_dir = Path(
+            getattr(dep_cfg, "snapshot_dir", Path(self.config.migration.output_dir) / "snapshots")
+        )
+        return SnapshotStore(snapshot_dir)
+
+    def _manifest_store(self) -> DeploymentManifestStore:
+        """Return the configured deployment manifest store."""
+        dep_cfg = getattr(self.config, "deployment", None)
+        manifest_dir = Path(
+            getattr(dep_cfg, "manifest_dir", Path(self.config.migration.output_dir) / "manifests")
+        )
+        return DeploymentManifestStore(manifest_dir)
 
     def register_agent(self, agent: BaseAgent) -> None:
         """Register an agent for orchestration."""
@@ -250,6 +300,78 @@ class Orchestrator:
         if agent_names is None:
             agent_names = list(self._agents.keys())
 
+        obs_cfg = getattr(self.config, "observability", None)
+        enable_corr = getattr(obs_cfg, "enable_correlation_ids", True)
+        enable_telemetry = getattr(obs_cfg, "enable_decision_telemetry", True)
+        dashboard_dir = Path(
+            getattr(obs_cfg, "dashboard_dir", Path(self.config.migration.output_dir) / "ops")
+        )
+
+        correlation_id = get_correlation_id()
+        if enable_corr and not correlation_id:
+            correlation_id = new_correlation_id("run")
+            set_correlation_id(correlation_id)
+
+        decision_telemetry = DecisionTelemetry(correlation_id=correlation_id)
+        self.context.connectors["decision_telemetry"] = decision_telemetry
+        self.context.connectors["correlation_id"] = correlation_id
+
+        if enable_telemetry:
+            decision_telemetry.record(
+                category="pipeline",
+                decision="start",
+                reason="pipeline execution requested",
+                metadata={"agent_names": agent_names},
+            )
+
+        run_id = self._new_run_id()
+
+        dep_cfg = getattr(self.config, "deployment", None)
+        enable_snapshots = getattr(dep_cfg, "enable_snapshots", True)
+        enable_idempotency = getattr(dep_cfg, "enable_idempotency", True)
+
+        # Capture pre-deploy snapshot for rollback reliability.
+        if enable_snapshots:
+            snapshot = capture_snapshot(run_id, self.registry.project_key, self.registry)
+            self._snapshot_store().save(snapshot)
+
+        # Build idempotency checker for deployment manifest traceability.
+        idempotency_checker: IdempotencyChecker | None = None
+        if enable_idempotency:
+            idempotency_checker = IdempotencyChecker(
+                store=self._manifest_store(),
+                run_id=run_id,
+                project_key=self.registry.project_key,
+            )
+            idempotency_checker.load_previous()
+
+        def _finalize_operational_artifacts() -> None:
+            if idempotency_checker is None:
+                return
+
+            for asset in self.registry.get_all():
+                payload = self._asset_content_payload(asset)
+                asset_type = asset.type.value if hasattr(asset.type, "value") else str(asset.type)
+
+                if idempotency_checker.needs_deploy(asset.id, payload):
+                    idempotency_checker.record_deployed(
+                        asset_id=asset.id,
+                        asset_type=asset_type,
+                        asset_name=asset.name,
+                        content=payload,
+                        fabric_item_id=self._fabric_item_id(asset),
+                    )
+                else:
+                    idempotency_checker.record_skipped(
+                        asset_id=asset.id,
+                        asset_type=asset_type,
+                        asset_name=asset.name,
+                        content=payload,
+                    )
+
+            manifest_path = idempotency_checker.finalize()
+            logger.info("deployment_manifest_finalized", run_id=run_id, path=str(manifest_path))
+
         # ── Resume: load checkpoint and detect completed agents ──
         skip_agents: set[str] = set()
         if resume:
@@ -257,12 +379,28 @@ class Orchestrator:
             skip_agents = completed & set(agent_names)
             if skip_agents:
                 logger.info("resume_skipping", agents=sorted(skip_agents))
+                if enable_telemetry:
+                    for name in sorted(skip_agents):
+                        decision_telemetry.record(
+                            category="resume",
+                            decision="skip_agent",
+                            agent=name,
+                            reason="already completed from checkpoint",
+                        )
 
         # ── Selective re-run: reset assets for specified agents ──
         if rerun_agents:
             for agent_name in rerun_agents:
                 count = self.registry.reset_assets_for_agent(agent_name)
                 logger.info("rerun_reset", agent=agent_name, assets_reset=count)
+                if enable_telemetry:
+                    decision_telemetry.record(
+                        category="rerun",
+                        decision="reset_agent_assets",
+                        agent=agent_name,
+                        reason="forced rerun requested",
+                        metadata={"assets_reset": count},
+                    )
                 skip_agents.discard(agent_name)
                 # Also force-run downstream agents
                 dag = build_agent_dag(agent_names)
@@ -270,12 +408,26 @@ class Orchestrator:
                     for downstream in nx.descendants(dag, agent_name):
                         self.registry.reset_assets_for_agent(downstream)
                         skip_agents.discard(downstream)
+                        if enable_telemetry:
+                            decision_telemetry.record(
+                                category="rerun",
+                                decision="reset_downstream_assets",
+                                agent=downstream,
+                                reason=f"upstream agent {agent_name} was rerun",
+                            )
 
         # ── Asset-level filter ──
         if asset_ids:
             self.registry.filter_asset_ids(asset_ids)
             # Discovery is not needed if we already have filtered assets
             skip_agents.add("discovery")
+            if enable_telemetry:
+                decision_telemetry.record(
+                    category="asset_filter",
+                    decision="filter_asset_ids",
+                    reason="asset_ids provided",
+                    metadata={"asset_ids_count": len(asset_ids)},
+                )
 
         # Build the execution DAG and compute waves
         active_agents = [n for n in agent_names if n not in skip_agents]
@@ -297,6 +449,13 @@ class Orchestrator:
 
         for wave_idx, wave in enumerate(waves):
             logger.info("wave_start", wave=wave_idx + 1, agents=wave)
+            if enable_telemetry:
+                decision_telemetry.record(
+                    category="wave",
+                    decision="start_wave",
+                    reason=f"wave {wave_idx + 1} starting",
+                    metadata={"wave": wave_idx + 1, "agents": wave},
+                )
 
             if len(wave) > 1 and self.config.migration.parallel_agents:
                 for name in wave:
@@ -324,10 +483,63 @@ class Orchestrator:
                     result = self._results.get(name)
                     if result and result.status == AgentStatus.FAILED:
                         logger.warning("fail_fast_abort", failed_agent=name, wave=wave_idx + 1)
+                        if enable_telemetry:
+                            decision_telemetry.record(
+                                category="fail_fast",
+                                decision="abort_pipeline",
+                                agent=name,
+                                reason="agent failure while fail_fast enabled",
+                                metadata={"wave": wave_idx + 1},
+                            )
                         self.registry.save()
+                        _finalize_operational_artifacts()
+                        OpsDashboardWriter(dashboard_dir).write(
+                            correlation_id=correlation_id or "unknown",
+                            project_key=self.registry.project_key,
+                            agent_results={
+                                n: {
+                                    "status": r.status.value,
+                                    "processed": r.assets_processed,
+                                    "converted": r.assets_converted,
+                                    "failed": r.assets_failed,
+                                }
+                                for n, r in self._results.items()
+                            },
+                            asset_stats=self.registry.get_statistics(),
+                            decision_telemetry=decision_telemetry,
+                            manifests={"last_manifest": self.get_status().get("last_manifest")},
+                            snapshots={"last_snapshot": self.get_status().get("last_snapshot")},
+                        )
                         return self._results
 
         self.registry.save()
+        _finalize_operational_artifacts()
+
+        if enable_telemetry:
+            decision_telemetry.record(
+                category="pipeline",
+                decision="complete",
+                reason="pipeline execution finished",
+                metadata={"agents": len(active_agents), "skipped_agents": len(skip_agents)},
+            )
+
+        OpsDashboardWriter(dashboard_dir).write(
+            correlation_id=correlation_id or "unknown",
+            project_key=self.registry.project_key,
+            agent_results={
+                n: {
+                    "status": r.status.value,
+                    "processed": r.assets_processed,
+                    "converted": r.assets_converted,
+                    "failed": r.assets_failed,
+                }
+                for n, r in self._results.items()
+            },
+            asset_stats=self.registry.get_statistics(),
+            decision_telemetry=decision_telemetry,
+            manifests={"last_manifest": self.get_status().get("last_manifest")},
+            snapshots={"last_snapshot": self.get_status().get("last_snapshot")},
+        )
 
         # Cleanup intermediate checkpoints on success
         if not keep_checkpoints:
@@ -431,10 +643,25 @@ class Orchestrator:
         checkpoints = sorted(ckpt_dir.glob("checkpoint_wave_*.json")) if ckpt_dir.exists() else []
         last_checkpoint = str(checkpoints[-1]) if checkpoints else None
 
+        dep_cfg = getattr(self.config, "deployment", None)
+        manifest_dir = Path(
+            getattr(dep_cfg, "manifest_dir", Path(self.config.migration.output_dir) / "manifests")
+        )
+        manifests = sorted(manifest_dir.glob("deployment_*.json")) if manifest_dir.exists() else []
+        last_manifest = str(manifests[-1]) if manifests else None
+
+        snapshot_dir = Path(
+            getattr(dep_cfg, "snapshot_dir", Path(self.config.migration.output_dir) / "snapshots")
+        )
+        snapshots = sorted(snapshot_dir.glob("snapshot_*.json")) if snapshot_dir.exists() else []
+        last_snapshot = str(snapshots[-1]) if snapshots else None
+
         return {
             "project_key": self.registry.project_key,
             "registry_path": str(self.registry.registry_path),
             "last_checkpoint": last_checkpoint,
+            "last_manifest": last_manifest,
+            "last_snapshot": last_snapshot,
             "assets": stats,
             "agents": agent_status,
         }

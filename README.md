@@ -34,7 +34,10 @@ cd DataikuToFabric && pip install -e ".[all]"
 # Configure
 cp config/config.template.yaml config/config.yaml
 # Edit config.yaml with your Dataiku & Fabric credentials
+# Set API key in env var (PowerShell): $env:DATAIKU_API_KEY="<YOUR_KEY>"
 ```
+
+**TLS note:** For internal/self-signed Dataiku certificates, set `dataiku.ca_bundle_path` in your config. Use `verify_ssl: false` only as a temporary workaround in trusted internal networks.
 
 **Requirements:** Python 3.10+ · Azure CLI (for Fabric auth) · Dataiku API v12+.
 
@@ -607,6 +610,7 @@ DataikuToFabric/
 | 🏗️ [Architecture](docs/ARCHITECTURE.md) | Core system design |
 | 📋 [Dev Plan](docs/DEVPLAN.md) | Development roadmap (Phases 1–27) |
 | 🔄 [Upgrade Plan](docs/UPGRADE_PLAN.md) | v2.0 expansion plan (Phases 19–30) |
+| 🗺️ [Next Roadmap 2026](docs/NEXT_ROADMAP_2026.md) | Post-Phase-27 delivery plan and priorities |
 | ⚠️ [Troubleshooting](docs/TROUBLESHOOTING.md) | Common errors & fixes |
 | 📝 [Changelog](CHANGELOG.md) | Version history |
 | 📦 [Examples](examples/README.md) | Migration walkthrough & offline demo |

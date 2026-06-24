@@ -286,6 +286,8 @@ dataiku:
   project_key: "CUSTOMER_360"
   timeout_seconds: 30
   max_retries: 3
+  verify_ssl: true                      # Set false only for trusted internal/self-signed environments
+  ca_bundle_path: null                  # Preferred: path to internal CA bundle PEM file
 
 # ─── Target: Microsoft Fabric ───────────────
 fabric:

@@ -28,6 +28,19 @@ class TestClientInit:
         c = DataikuClient(base_url=BASE_URL, api_key="secret")
         assert c._api_key == "secret"
 
+    def test_verify_ssl_disabled(self):
+        c = DataikuClient(base_url=BASE_URL, api_key="secret", verify_ssl=False)
+        assert c._verify is False
+
+    def test_ca_bundle_path_overrides_verify_flag(self):
+        c = DataikuClient(
+            base_url=BASE_URL,
+            api_key="secret",
+            verify_ssl=False,
+            ca_bundle_path="/tmp/custom-ca.pem",
+        )
+        assert c._verify == "/tmp/custom-ca.pem"
+
 
 class TestGetProject:
     @pytest.mark.asyncio
