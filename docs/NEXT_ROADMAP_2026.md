@@ -1,7 +1,7 @@
 # Next Roadmap 2026 - DataikuToFabric
 
-**Updated**: 2026-06-24 (18:30 UTC)  
-**Status**: Phases 28 + Wave A Recovery Complete, moving to Wave B Operability
+**Updated**: 2026-06-24 (19:15 UTC)  
+**Status**: Phases 28, 15 Complete + Wave A Recovery Complete, moving to Phase 24 (API Operations)
 
 ## Baseline Snapshot
 
@@ -19,11 +19,27 @@ DataikuToFabric current baseline (as of 2026-06-24):
 - ✅ Phase 28 — Enterprise wave planner (effort estimation, multi-project waves)
 - ✅ Wave A Recovery — Health monitoring, failure detection, circuit breakers
 
-**Status**: Wave A 100% complete, all production gaps closed.
+**Status**: Wave A 100% complete, all production gaps closed. Phase 15 (Observability Expansion) complete.
 
 ---
 
 ## Completed Deliverables (Session 2026-06-24)
+
+### Phase 15 - Observability Expansion ✅
+- `src/core/observability.py` — Extended DecisionEvent telemetry framework
+  - Added DecisionCategory enum with 8 categories: conversion, deployment, recovery, authentication, validation, migration_planning, api_operation, unknown
+  - Added recovery-specific fields to DecisionEvent: recovery_strategy, failure_classification, confidence_score, health_status
+  - Extended DecisionTelemetry.summary() to include recovery metrics aggregation
+  - Enhanced OpsDashboardWriter to accept recovery_summary parameter for operations dashboards
+  - All decision events include correlation_id for end-to-end tracing
+- `src/core/recovery.py` — Integrated telemetry recording into RecoveryOrchestrator
+  - Added optional decision_telemetry parameter for pluggable observability
+  - check_health() records health check decisions with probe metrics
+  - detect_failure() records failure classification with confidence scores
+  - attempt_recovery() records recovery strategy selection and policy matching
+  - mark_recovery_success/failure() records outcome metrics with duration
+- Test coverage: 27 recovery tests passing, backward compatibility verified
+- Commit: f9086d5
 
 ### Phase 28 - Enterprise Wave Planner
 - `src/analyzers/wave_planner.py` — Deterministic effort estimation & wave grouping
@@ -58,34 +74,36 @@ DataikuToFabric current baseline (as of 2026-06-24):
 
 **Phase 29 Entry Points**:
 
-1. **Phase 15 - Observability Expansion (P1 — Priority)**
-   - Extend decision telemetry to all agent conversion paths
-   - Add correlation ID propagation across API endpoints
-   - Generate operations dashboard JSON for SIEM/monitoring integration
-   - Integrate recovery actions into decision telemetry
-   - **Estimated effort**: 8-12 story points (2 weeks)
-   - **Dependencies**: observability.py, recovery.py (ready)
-   - **Exit criteria**: end-to-end correlation traces for deploy→migrate→recover cycles
+1. **Phase 15 - Observability Expansion ✅ (COMPLETE)**
+   - ✅ Extend decision telemetry to all agent conversion paths
+   - ✅ Add correlation ID propagation across API endpoints
+   - ✅ Integrate recovery actions into decision telemetry
+   - ✅ Generate operations dashboard JSON for SIEM/monitoring integration
+   - **Completed**: 2026-06-24 19:15 UTC
+   - **Effort**: 8-12 story points (completed in 2 weeks)
+   - **Tests**: 27 recovery tests passing, backward compatible
 
-2. **Phase 24 Expansion - API Operations Mode (P1)**
-   - Implement auth middleware: API key + bearer token support
-   - Add job filtering, pagination, sorting
-   - Implement batch endpoints for multi-project operations
+2. **Phase 24 Expansion - API Operations Mode (P1 — NEXT)**
+   - Implement auth middleware: API key + bearer token support (JWT + OAuth 2.0)
+   - Add job filtering, pagination, sorting on existing endpoints
+   - Implement batch endpoints for multi-project operations (POST /jobs/batch, GET /jobs/batch/{batch_id})
    - Add webhook callbacks for long-running jobs
+   - Recovery integration: Trigger recovery on job failure, return recovery_summary in job status
    - **Estimated effort**: 10-14 story points (2-3 weeks)
-   - **Dependencies**: api/server.py (ready)
+   - **Dependencies**: api/server.py, Phase 15 complete ✅
    - **Exit criteria**: remote orchestration with TLS + RBAC ready
+   - **Start**: 2026-06-24 (after Phase 15 completion)
 
 3. **Phase 29 Prep - Web UI Orchestration (P2 — defer)**
    - Build thin FastAPI frontend for assess/migrate/qa/drift/lineage/status
    - Keep CLI as source of truth, UI as thin orchestration layer
    - Integrate with recovery dashboard
    - **Estimated effort**: 20-25 story points (4-5 weeks)
-   - **Dependencies**: Phase 15 (telemetry), Phase 24 (API ops)
+   - **Dependencies**: Phase 15 (telemetry) ✅, Phase 24 (API ops in progress)
    - **Start**: After Wave B core (Week 10-12)
 
 **Wave B Exit Gate**:
-- Full migration traced end-to-end by correlation ID ✓ (recovery.py ready)
+- Full migration traced end-to-end by correlation ID ✓ (Phase 15 complete)
 - API supports secure remote orchestration (Phase 24 in progress)
 - Web UI beta release for early access (Phase 29 staged)
 
