@@ -15,6 +15,8 @@
 
 ## ⚡ Quick Start
 
+For full environment setup and first-run guidance, see [docs/SETUP.md](docs/SETUP.md).
+
 ```bash
 # One command — discover, convert, validate
 dataiku-to-fabric migrate --project MY_PROJECT --target MY_FABRIC_WORKSPACE
@@ -40,6 +42,8 @@ cp config/config.template.yaml config/config.yaml
 **TLS note:** For internal/self-signed Dataiku certificates, set `dataiku.ca_bundle_path` in your config. Use `verify_ssl: false` only as a temporary workaround in trusted internal networks.
 
 **Requirements:** Python 3.10+ · Azure CLI (for Fabric auth) · Dataiku API v12+.
+
+Need a full install/config walkthrough? Use [docs/SETUP.md](docs/SETUP.md).
 
 </details>
 
