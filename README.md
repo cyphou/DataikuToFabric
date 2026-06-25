@@ -13,6 +13,15 @@
 
 ---
 
+## 🚀 Getting Started
+
+- Install: [docs/SETUP.md](docs/SETUP.md#installation)
+- Setup and first run: [docs/SETUP.md](docs/SETUP.md)
+- Offline demo: [examples/run_demo.py](examples/run_demo.py)
+- Troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+
+---
+
 ## ⚡ Quick Start
 
 For full environment setup and first-run guidance, see [docs/SETUP.md](docs/SETUP.md).
