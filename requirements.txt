@@ -8,6 +8,9 @@ rich>=13.7.0
 # HTTP client (async)
 httpx>=0.25.0
 
+# Requests compatibility guardrail used by tooling/plugins in test env
+chardet<6
+
 # SQL parsing & transpilation
 sqlglot>=20.0.0
 

@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated .gitignore with packaging and IDE artefacts
 - Updated pyproject.toml URLs to point to GitHub repository
+- Added `chardet<6` dependency constraint to avoid `RequestsDependencyWarning` in test/runtime tooling environments
 
 ## [0.1.0] — 2025-01-01
 

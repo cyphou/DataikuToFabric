@@ -31,6 +31,7 @@ keywords = ["dataiku", "fabric", "migration", "lakehouse", "notebook", "pipeline
 dependencies = [
     "click>=8.1.0",
     "httpx>=0.25.0",
+    "chardet<6",
     "sqlglot>=20.0.0",
     "nbformat>=5.9.0",
     "pydantic>=2.5.0",
