@@ -101,6 +101,38 @@ class DataikuClient:
                 raise
         raise RuntimeError(f"Request to {url} failed after {self._max_retries} retries")
 
+    async def _retry_operation(self, description: str, attempt_fn: Any) -> Any:
+        """Run ``attempt_fn()`` with the same retry/backoff policy as ``_request``.
+
+        Used by the raw-bytes/streaming export paths, which bypass ``_request``
+        and previously had no retry logic at all.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                return await attempt_fn()
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                last_exc = e
+                if status == 429 and attempt < self._max_retries:
+                    retry_after = int(e.response.headers.get("Retry-After", str(attempt * 2)))
+                    logger.warning("rate_limited", operation=description, retry_after=retry_after)
+                    await asyncio.sleep(retry_after)
+                    continue
+                if status >= 500 and attempt < self._max_retries:
+                    logger.warning("server_error", operation=description, status=status, attempt=attempt)
+                    await asyncio.sleep(attempt * 2)
+                    continue
+                raise
+            except httpx.RequestError as e:
+                last_exc = e
+                if attempt < self._max_retries:
+                    logger.warning("request_error", operation=description, attempt=attempt, error=str(e))
+                    await asyncio.sleep(attempt * 2)
+                    continue
+                raise
+        raise RuntimeError(f"{description} failed after {self._max_retries} retries") from last_exc
+
     async def _paginated_list(self, path: str, *, limit: int = 100, **kwargs: Any) -> list[dict]:
         """Fetch a paginated list endpoint, accumulating all pages.
 
@@ -253,9 +285,13 @@ class DataikuClient:
         url = f"{self.base_url}/public/api/projects/{project_key}/datasets/{dataset_name}/data"
         params = {"format": fmt}
         client = await self._ensure_client()
-        response = await client.get(url, params=params)
-        response.raise_for_status()
-        return response.content
+
+        async def _attempt() -> bytes:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response.content
+
+        return await self._retry_operation(f"export_dataset({dataset_name})", _attempt)
 
     async def export_dataset_to_file(
         self,
@@ -270,7 +306,9 @@ class DataikuClient:
         """Export dataset data to a local file using streaming download.
 
         Streams data in chunks to handle large datasets without
-        loading everything into memory.
+        loading everything into memory. Writes to a ``.part`` temp file and
+        renames it atomically on success, so a failed/interrupted download
+        never leaves a corrupt or truncated file at ``output_path``.
 
         Args:
             project_key: Dataiku project key.
@@ -295,14 +333,27 @@ class DataikuClient:
 
         out = Path(output_path)
         out.parent.mkdir(parents=True, exist_ok=True)
-        total_bytes = 0
+        tmp_path = out.with_name(out.name + ".part")
 
-        async with client.stream("GET", url, params=params) as response:
-            response.raise_for_status()
-            with open(out, "wb") as f:
-                async for chunk in response.aiter_bytes(chunk_size=65536):
-                    f.write(chunk)
-                    total_bytes += len(chunk)
+        async def _attempt() -> int:
+            total = 0
+            async with client.stream("GET", url, params=params) as response:
+                response.raise_for_status()
+                with open(tmp_path, "wb") as f:
+                    async for chunk in response.aiter_bytes(chunk_size=65536):
+                        f.write(chunk)
+                        total += len(chunk)
+            return total
+
+        try:
+            total_bytes = await self._retry_operation(
+                f"export_dataset_to_file({dataset_name})", _attempt
+            )
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+
+        tmp_path.replace(out)
 
         return {
             "path": str(out),

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `export_dataset()` and `export_dataset_to_file()` (Dataiku data extraction) now retry transient errors (429/5xx/connection errors) with the same backoff policy as `_request()`, instead of failing on the first blip during a large export
+- `export_dataset_to_file()` now streams into a `.part` temp file and renames it atomically on success, so an interrupted/failed download never leaves a corrupt or truncated file at the final output path
 - Discovery agent no longer loses all previously-discovered assets when a single recipe's detail fetch or a single dataset's schema fetch fails — each item is now handled independently and flagged for review instead of aborting the whole `discover` run
 - `get_flow()` and `list_scenarios()` failures now degrade gracefully (review flag) instead of aborting discovery, matching the pattern already used for connections, saved models, and dashboards
 - A fatal discovery error (e.g. `list_datasets()` itself failing) now persists whatever assets were already discovered to `registry.json` before returning, instead of silently discarding all progress from that run

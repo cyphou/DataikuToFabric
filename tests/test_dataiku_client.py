@@ -313,6 +313,126 @@ class TestListDashboards:
             assert result == []
 
 
+class _FakeStreamResponse:
+    """Minimal stand-in for an httpx streaming response."""
+
+    def __init__(self, chunks: list[bytes], status_code: int = 200):
+        self._chunks = chunks
+        self.status_code = status_code
+        self.request = httpx.Request("GET", "https://dss.example.com")
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            resp = httpx.Response(self.status_code, request=self.request)
+            raise httpx.HTTPStatusError("error", request=self.request, response=resp)
+
+    async def aiter_bytes(self, chunk_size: int = 65536):
+        for c in self._chunks:
+            yield c
+
+
+class _FakeStreamCtx:
+    def __init__(self, response: _FakeStreamResponse):
+        self._response = response
+
+    async def __aenter__(self) -> _FakeStreamResponse:
+        return self._response
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+class TestExportDataset:
+    """`export_dataset()` previously had zero retry logic, unlike `_request()`."""
+
+    @pytest.mark.asyncio
+    async def test_success_returns_bytes(self, client):
+        http_client = await client._ensure_client()
+        resp = httpx.Response(200, content=b"a,b\n1,2\n", request=httpx.Request("GET", "https://x.com"))
+        with patch.object(http_client, "get", new_callable=AsyncMock, return_value=resp):
+            data = await client.export_dataset("PROJ", "orders")
+        assert data == b"a,b\n1,2\n"
+
+    @pytest.mark.asyncio
+    async def test_retries_on_server_error_then_succeeds(self, client):
+        http_client = await client._ensure_client()
+        req = httpx.Request("GET", "https://x.com")
+        fail_resp = httpx.Response(500, request=req)
+        ok_resp = httpx.Response(200, content=b"ok", request=req)
+
+        call_count = 0
+
+        async def _fake_get(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return fail_resp if call_count == 1 else ok_resp
+
+        with patch.object(http_client, "get", side_effect=_fake_get):
+            data = await client.export_dataset("PROJ", "orders")
+        assert data == b"ok"
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_gives_up_after_max_retries(self, client):
+        http_client = await client._ensure_client()
+        resp = httpx.Response(500, request=httpx.Request("GET", "https://x.com"))
+        with patch.object(http_client, "get", new_callable=AsyncMock, return_value=resp):
+            with pytest.raises(httpx.HTTPStatusError):
+                await client.export_dataset("PROJ", "orders")
+
+
+class TestExportDatasetToFile:
+    """Streaming export writes to a `.part` temp file and renames atomically,
+    so a failed/interrupted download never leaves a corrupt file behind.
+    """
+
+    @pytest.mark.asyncio
+    async def test_success_writes_final_file_and_removes_temp(self, client, tmp_path):
+        http_client = await client._ensure_client()
+        out = tmp_path / "orders.csv"
+        response = _FakeStreamResponse([b"a,b\n", b"1,2\n"])
+        with patch.object(http_client, "stream", return_value=_FakeStreamCtx(response)):
+            result = await client.export_dataset_to_file("PROJ", "orders", str(out))
+
+        assert out.exists()
+        assert out.read_bytes() == b"a,b\n1,2\n"
+        assert result["size_bytes"] == 8
+        assert not out.with_name(out.name + ".part").exists()
+
+    @pytest.mark.asyncio
+    async def test_failure_leaves_no_file_at_output_path(self, client, tmp_path):
+        http_client = await client._ensure_client()
+        out = tmp_path / "orders.csv"
+        response = _FakeStreamResponse([], status_code=500)
+        with patch.object(http_client, "stream", return_value=_FakeStreamCtx(response)):
+            with pytest.raises(httpx.HTTPStatusError):
+                await client.export_dataset_to_file("PROJ", "orders", str(out))
+
+        assert not out.exists()
+        assert not out.with_name(out.name + ".part").exists()
+
+    @pytest.mark.asyncio
+    async def test_retries_on_server_error_then_succeeds(self, client, tmp_path):
+        http_client = await client._ensure_client()
+        out = tmp_path / "orders.csv"
+        fail_response = _FakeStreamResponse([], status_code=500)
+        ok_response = _FakeStreamResponse([b"a,b\n", b"1,2\n"])
+
+        call_count = 0
+
+        def _fake_stream(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return _FakeStreamCtx(fail_response if call_count == 1 else ok_response)
+
+        with patch.object(http_client, "stream", side_effect=_fake_stream):
+            result = await client.export_dataset_to_file("PROJ", "orders", str(out))
+
+        assert out.read_bytes() == b"a,b\n1,2\n"
+        assert result["size_bytes"] == 8
+        assert call_count == 2
+
+
 class TestClientCleanup:
     @pytest.mark.asyncio
     async def test_close_client(self, client):
