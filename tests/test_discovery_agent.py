@@ -138,6 +138,56 @@ class TestDiscoveryAgentBasic:
         assert len(dashboard_assets) == 2
 
 
+class TestDiscoveryConnectionsGracefulDegradation:
+    """`/admin/connections/` requires an admin API key — a project-scoped
+
+    key (the common case) must not abort the whole discovery run.
+    """
+
+    @pytest.mark.asyncio
+    async def test_connections_failure_does_not_fail_discovery(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_connections = AsyncMock(side_effect=PermissionError("403 Forbidden"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert result.assets_processed > 0
+        assert ctx.registry.get_by_type(AssetType.CONNECTION) == []
+
+    @pytest.mark.asyncio
+    async def test_connections_failure_raises_review_flag(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_connections = AsyncMock(side_effect=PermissionError("403 Forbidden"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert any("admin API key" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_other_asset_types_still_discovered_when_connections_fail(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_connections = AsyncMock(side_effect=PermissionError("403 Forbidden"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        await agent.execute(ctx)
+
+        assert ctx.registry.get_by_type(AssetType.RECIPE_SQL)
+        assert ctx.registry.get_by_type(AssetType.DATASET)
+        assert ctx.registry.get_by_type(AssetType.SCENARIO)
+
+
 class TestDiscoveryRecipes:
     """Recipe discovery specifics."""
 

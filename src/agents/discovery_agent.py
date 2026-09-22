@@ -61,6 +61,7 @@ class DiscoveryAgent(BaseAgent):
         project_key = config.dataiku.project_key
         processed = 0
         errors: list[str] = []
+        review_flags: list[str] = []
 
         try:
             # Discover recipes
@@ -123,19 +124,27 @@ class DiscoveryAgent(BaseAgent):
                 registry.add_asset(asset)
                 processed += 1
 
-            # Discover connections
-            connections = await client.list_connections()
-            for conn in connections:
-                asset = Asset(
-                    id=f"connection_{conn.get('name', conn.get('id', ''))}",
-                    type=AssetType.CONNECTION,
-                    name=conn.get("name", conn.get("id", "")),
-                    source_project=project_key,
-                    state=MigrationState.DISCOVERED,
-                    metadata=conn,
+            # Discover connections — this typically requires an admin-level
+            # API key, unlike everything else discovered so far. Degrade
+            # gracefully so a project-scoped key doesn't abort the whole run.
+            try:
+                connections = await client.list_connections()
+                for conn in connections:
+                    asset = Asset(
+                        id=f"connection_{conn.get('name', conn.get('id', ''))}",
+                        type=AssetType.CONNECTION,
+                        name=conn.get("name", conn.get("id", "")),
+                        source_project=project_key,
+                        state=MigrationState.DISCOVERED,
+                        metadata=conn,
+                    )
+                    registry.add_asset(asset)
+                    processed += 1
+            except Exception as e:
+                logger.warning("connections_discovery_failed", error=str(e))
+                review_flags.append(
+                    f"Connections not discovered (requires admin API key): {e}"
                 )
-                registry.add_asset(asset)
-                processed += 1
 
             # Discover flow
             flow = await client.get_flow(project_key)
@@ -206,6 +215,7 @@ class DiscoveryAgent(BaseAgent):
                 status=AgentStatus.COMPLETED,
                 assets_processed=processed,
                 assets_converted=processed,
+                review_flags=review_flags,
             )
 
         except Exception as e:

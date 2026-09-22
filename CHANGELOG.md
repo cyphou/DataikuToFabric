@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Discovery agent no longer fails the entire `discover` run when `list_connections()` (Dataiku's `/admin/connections/` endpoint) is unreachable with a project-scoped API key; it now logs a review flag and continues discovering all other asset types, matching the existing graceful-degradation pattern already used for saved models and dashboards
+
 ### Added
 - `test-connection` CLI command — verifies Dataiku server connectivity and auth with a single lightweight call, reporting an actionable category (`unauthorized`, `forbidden`, `not_found`, `connection_error`, `timeout`) instead of requiring a full `discover` run to diagnose issues
 - `dataiku.proxy_url` config option for explicit outbound proxy configuration (in addition to automatically honored `HTTPS_PROXY`/`HTTP_PROXY` env vars) for corporate/gateway-fronted Dataiku deployments

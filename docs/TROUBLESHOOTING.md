@@ -41,6 +41,15 @@ python -m src.cli --help
   still fails, upgrade to the latest version of this toolkit, which sends the
   Bearer header exclusively.
 
+### `discover` reports a "Connections not discovered" review flag
+
+Listing connections uses Dataiku's `/admin/connections/` endpoint, which
+requires an **admin** API key. A project-scoped key (the common case) will
+get a 401/403 here — this no longer fails the whole `discover` run. Recipes,
+datasets, folders, flow, scenarios, models, and dashboards are still
+discovered normally; only the `CONNECTION` assets are skipped. To include
+connections, use an admin API key or ask a Dataiku admin to export them.
+
 ### `[SSL: CERTIFICATE_VERIFY_FAILED]` with Dataiku API
 
 Your Dataiku endpoint is likely using a private or self-signed certificate chain.
