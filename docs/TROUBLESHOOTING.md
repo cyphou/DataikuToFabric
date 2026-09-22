@@ -27,6 +27,12 @@ python -m src.cli --help
 - Verify your `dataiku.api_key` is valid and has not expired.
 - Ensure the API key has **read access** to the target project.
 - Generate a new key from Dataiku → Administration → API Keys.
+- The client authenticates with an `Authorization: Bearer <key>` header. Some
+  Dataiku deployments — notably ones behind a gateway/reverse proxy — reject
+  the legacy `?apiKey=` query-param form with a 401 even though the key is
+  valid. If `curl -H "Authorization: Bearer $KEY" <url>` succeeds but the CLI
+  still fails, upgrade to the latest version of this toolkit, which sends the
+  Bearer header exclusively.
 
 ### `[SSL: CERTIFICATE_VERIFY_FAILED]` with Dataiku API
 

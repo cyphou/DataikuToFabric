@@ -89,7 +89,7 @@
 | 1.2 | Wire connectors into CLI context | `cli.py` | Create `DataikuClient` + `FabricClient`, add to `context.connectors` |
 | 1.3 | Add Azure Identity auth to Fabric client | `connectors/fabric_client.py` | `DefaultAzureCredential` + token acquisition |
 | 1.4 | Fix test assertions (type mismatches) | `tests/test_translators.py`, `tests/test_python_translator.py`, `tests/test_visual_recipe.py` | Match actual function return types |
-| 1.5 | Fix Dataiku client API auth header | `connectors/dataiku_client.py` | Use `apiKey` query param (Dataiku convention) |
+| 1.5 | Fix Dataiku client API auth header | `connectors/dataiku_client.py` | Use `Authorization: Bearer <key>` header (some Dataiku deployments/gateways reject the `?apiKey=` query-param form with a 401) |
 | 1.6 | Add `__init__.py` exports for public API | `agents/__init__.py`, `translators/__init__.py`, `connectors/__init__.py` |
 
 ### Gate

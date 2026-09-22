@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Dataiku client now authenticates via `Authorization: Bearer <api_key>` header instead of the `?apiKey=` query parameter, which some Dataiku deployments (e.g. behind gateways/reverse proxies) reject with a 401 even for valid keys
+
 ### Added
 - Data migration pipeline: export datasets from Dataiku → upload to OneLake → load into Delta/Warehouse tables
 - Chunked upload to OneLake with configurable chunk size (default 4 MB), retry logic, progress callback

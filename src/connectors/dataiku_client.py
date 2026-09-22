@@ -15,7 +15,10 @@ logger = get_logger(__name__)
 class DataikuClient:
     """Async client for the Dataiku DSS Public REST API.
 
-    Auth: Dataiku uses personal API keys passed as a query parameter.
+    Auth: personal API keys are sent as an ``Authorization: Bearer <key>``
+    header. Some Dataiku deployments (e.g. behind certain gateways/proxies)
+    reject the legacy ``?apiKey=`` query-param form with a 401, so the
+    Bearer header is the only mechanism used here.
     Reference: https://doc.dataiku.com/dss/latest/publicapi/rest.html
     """
 
@@ -41,7 +44,10 @@ class DataikuClient:
             self._client = httpx.AsyncClient(
                 timeout=self._timeout,
                 verify=self._verify,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self._api_key}",
+                },
             )
         return self._client
 
@@ -54,7 +60,6 @@ class DataikuClient:
         """Make an authenticated API request with retry + backoff."""
         url = f"{self.base_url}/public/api{path}"
         params = kwargs.pop("params", {})
-        params["apiKey"] = self._api_key
 
         client = await self._ensure_client()
 
@@ -192,7 +197,7 @@ class DataikuClient:
         Returns raw bytes of the exported data.
         """
         url = f"{self.base_url}/public/api/projects/{project_key}/datasets/{dataset_name}/data"
-        params = {"apiKey": self._api_key, "format": fmt}
+        params = {"format": fmt}
         client = await self._ensure_client()
         response = await client.get(url, params=params)
         response.raise_for_status()
@@ -226,7 +231,7 @@ class DataikuClient:
         from pathlib import Path
 
         url = f"{self.base_url}/public/api/projects/{project_key}/datasets/{dataset_name}/data"
-        params: dict[str, str] = {"apiKey": self._api_key, "format": fmt}
+        params: dict[str, str] = {"format": fmt}
 
         # Incremental filter — Dataiku DSS supports filter as a query param
         if filter_column and filter_value is not None:

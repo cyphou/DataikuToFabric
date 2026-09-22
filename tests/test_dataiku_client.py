@@ -51,6 +51,35 @@ class TestGetProject:
             assert result["projectKey"] == "PROJ"
 
 
+class TestAuthentication:
+    """Auth uses an Authorization: Bearer header, not an apiKey query param.
+
+    Some Dataiku deployments (e.g. behind certain gateways/proxies) reject
+    the legacy ``?apiKey=`` query-param form with a 401.
+    """
+
+    @pytest.mark.asyncio
+    async def test_ensure_client_sets_bearer_header(self, client):
+        http_client = await client._ensure_client()
+        assert http_client.headers["Authorization"] == f"Bearer {API_KEY}"
+
+    @pytest.mark.asyncio
+    async def test_request_does_not_send_api_key_as_query_param(self, client):
+        captured: dict = {}
+
+        async def _fake_request(method, url, params=None, **kwargs):
+            captured["params"] = params or {}
+            return httpx.Response(
+                200, json={"ok": True}, request=httpx.Request(method, url)
+            )
+
+        http_client = await client._ensure_client()
+        with patch.object(http_client, "request", side_effect=_fake_request):
+            await client._request("GET", "/projects/PROJ")
+
+        assert "apiKey" not in captured["params"]
+
+
 class TestListRecipes:
     @pytest.mark.asyncio
     async def test_list_recipes_returns_list(self, client):
