@@ -343,6 +343,31 @@ class TestGetProjectVariables:
             assert result == mock_data
 
 
+class TestJupyterNotebooks:
+    @pytest.mark.asyncio
+    async def test_list_jupyter_notebooks_calls_correct_endpoint(self, client):
+        mock_data = [{"name": "Experiment 42", "language": "Python"}]
+        with patch.object(client, "_paginated_list", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.list_jupyter_notebooks("PROJ")
+            m.assert_called_once_with("/projects/PROJ/jupyter-notebooks/")
+            assert result == mock_data
+
+    @pytest.mark.asyncio
+    async def test_list_active_jupyter_notebooks_adds_active_query(self, client):
+        with patch.object(client, "_paginated_list", new_callable=AsyncMock, return_value=[]) as m:
+            result = await client.list_jupyter_notebooks("PROJ", active=True)
+            m.assert_called_once_with("/projects/PROJ/jupyter-notebooks/?active=true")
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_jupyter_notebook_calls_correct_endpoint(self, client):
+        mock_data = {"nbformat": 4, "cells": []}
+        with patch.object(client, "_request", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.get_jupyter_notebook("PROJ", "Experiment 42")
+            m.assert_called_once_with("GET", "/projects/PROJ/jupyter-notebooks/Experiment 42")
+            assert result == mock_data
+
+
 class _FakeStreamResponse:
     """Minimal stand-in for an httpx streaming response."""
 

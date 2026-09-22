@@ -282,6 +282,39 @@ class DiscoveryAgent(BaseAgent):
                 logger.warning("streaming_endpoints_discovery_failed", error=str(e))
                 review_flags.append(f"Streaming endpoints not discovered: {e}")
 
+            # Discover Jupyter notebooks — ad-hoc notebooks are outside the
+            # Flow recipe graph, so catalog them with full nbformat payload and
+            # flag them for manual migration planning.
+            try:
+                notebooks = await client.list_jupyter_notebooks(project_key)
+                for notebook in notebooks:
+                    notebook_name = notebook.get("name", "")
+                    notebook_payload: dict = {}
+                    try:
+                        notebook_payload = await client.get_jupyter_notebook(project_key, notebook_name)
+                    except Exception as e:
+                        logger.warning(
+                            "jupyter_notebook_detail_discovery_failed",
+                            notebook=notebook_name,
+                            error=str(e),
+                        )
+                        review_flags.append(f"Jupyter notebook '{notebook_name}' payload not discovered: {e}")
+
+                    asset = Asset(
+                        id=f"jupyter_notebook_{notebook_name}",
+                        type=AssetType.JUPYTER_NOTEBOOK,
+                        name=notebook_name,
+                        source_project=project_key,
+                        state=MigrationState.DISCOVERED,
+                        metadata={"listing": notebook, "payload": notebook_payload},
+                        review_flags=["Ad-hoc notebook outside Dataiku Flow — review for manual Fabric notebook migration"],
+                    )
+                    registry.add_asset(asset)
+                    processed += 1
+            except Exception as e:
+                logger.warning("jupyter_notebooks_discovery_failed", error=str(e))
+                review_flags.append(f"Jupyter notebooks not discovered: {e}")
+
             registry.save()
             logger.info("discovery_complete", project=project_key, assets=processed)
 

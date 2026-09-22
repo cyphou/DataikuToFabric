@@ -62,6 +62,12 @@ def _make_mock_client(fixtures: dict) -> AsyncMock:
 
     client.list_webapps.return_value = fixtures.get("webapps", [])
     client.list_streaming_endpoints.return_value = fixtures.get("streaming_endpoints", [])
+    client.list_jupyter_notebooks.return_value = fixtures.get("jupyter_notebooks", [])
+
+    async def _get_jupyter_notebook(project_key: str, notebook_name: str) -> dict:
+        return fixtures.get("jupyter_notebook_payloads", {}).get(notebook_name, {})
+
+    client.get_jupyter_notebook = AsyncMock(side_effect=_get_jupyter_notebook)
     client.get_project_variables.return_value = fixtures.get("variables", {"standard": {}, "local": {}})
 
     return client
@@ -287,6 +293,64 @@ class TestDiscoveryWebappsStreamingVariables:
         assert result.status.value == "completed"
         assert ctx.registry.get_by_type(AssetType.FLOW)
         assert any("Project variables not discovered" in flag for flag in result.review_flags)
+
+
+class TestDiscoveryJupyterNotebooks:
+    """Jupyter notebooks are ad-hoc project assets, distinct from Flow recipes."""
+
+    @pytest.mark.asyncio
+    async def test_jupyter_notebooks_discovered_with_payload_and_flag(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["jupyter_notebooks"] = [
+            {"name": "Experiment 42", "language": "Python", "kernelSpec": {"name": "python3"}}
+        ]
+        fixtures["jupyter_notebook_payloads"] = {
+            "Experiment 42": {"nbformat": 4, "cells": [{"cell_type": "code", "source": ["1+1"]}]}
+        }
+        ctx = _make_context(tmp_path)
+        ctx.connectors["dataiku"] = _make_mock_client(fixtures)
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        notebook_assets = ctx.registry.get_by_type(AssetType.JUPYTER_NOTEBOOK)
+        assert len(notebook_assets) == 1
+        assert notebook_assets[0].name == "Experiment 42"
+        assert notebook_assets[0].metadata["payload"]["nbformat"] == 4
+        assert any("manual Fabric notebook migration" in flag for flag in notebook_assets[0].review_flags)
+
+    @pytest.mark.asyncio
+    async def test_jupyter_notebook_detail_failure_does_not_drop_listing(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["jupyter_notebooks"] = [{"name": "BrokenNotebook", "language": "Python"}]
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.get_jupyter_notebook = AsyncMock(side_effect=RuntimeError("detail boom"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        notebook_assets = ctx.registry.get_by_type(AssetType.JUPYTER_NOTEBOOK)
+        assert len(notebook_assets) == 1
+        assert notebook_assets[0].metadata["payload"] == {}
+        assert any("payload not discovered" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_jupyter_notebooks_failure_does_not_fail_discovery(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_jupyter_notebooks = AsyncMock(side_effect=RuntimeError("boom"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert any("Jupyter notebooks not discovered" in flag for flag in result.review_flags)
 
 
 class TestDiscoveryPartialFailureResilience:

@@ -273,6 +273,18 @@ class DataikuClient:
         """List all streaming endpoints (Kafka/etc.) in a project."""
         return await self._paginated_list(f"/projects/{project_key}/streamingendpoints/")
 
+    async def list_jupyter_notebooks(self, project_key: str, *, active: bool = False) -> list[dict]:
+        """List Jupyter notebooks in a project."""
+        suffix = "?active=true" if active else ""
+        return await self._paginated_list(f"/projects/{project_key}/jupyter-notebooks/{suffix}")
+
+    async def get_jupyter_notebook(self, project_key: str, notebook_name: str) -> dict:
+        """Get a Jupyter notebook's full nbformat payload."""
+        return await self._request(
+            "GET",
+            f"/projects/{project_key}/jupyter-notebooks/{notebook_name}",
+        )
+
     async def get_project_variables(self, project_key: str) -> dict:
         """Get project-level variables (used for ``${var}`` substitution in
 

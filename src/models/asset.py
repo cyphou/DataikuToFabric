@@ -24,6 +24,7 @@ class AssetType(str, Enum):
     DASHBOARD = "dashboard"
     WEBAPP = "webapp"
     STREAMING_ENDPOINT = "streaming_endpoint"
+    JUPYTER_NOTEBOOK = "jupyter_notebook"
 
 
 class MigrationState(str, Enum):
