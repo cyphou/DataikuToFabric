@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `test-connection` CLI command — verifies Dataiku server connectivity and auth with a single lightweight call, reporting an actionable category (`unauthorized`, `forbidden`, `not_found`, `connection_error`, `timeout`) instead of requiring a full `discover` run to diagnose issues
+- `dataiku.proxy_url` config option for explicit outbound proxy configuration (in addition to automatically honored `HTTPS_PROXY`/`HTTP_PROXY` env vars) for corporate/gateway-fronted Dataiku deployments
+- Dataiku client now follows HTTP redirects (`follow_redirects=True`), needed for gateways/reverse proxies that rewrite paths or upgrade http→https
+
 ### Security
 - `serve` command now supports `--auth-mode` (`api_key`/`bearer`) with a required secret env var; previously the underlying auth support existed but the CLI never wired it, so `serve` always ran unauthenticated regardless of intent
 - API server compares API keys/bearer tokens with `hmac.compare_digest` instead of `==` to avoid timing side-channels

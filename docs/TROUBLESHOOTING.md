@@ -2,6 +2,11 @@
 
 ## Common Errors
 
+Run `dataiku-to-fabric test-connection --project YOUR_PROJECT_KEY` first —
+it isolates connectivity/auth issues from the rest of the discovery pipeline
+and reports a specific category (`unauthorized`, `forbidden`, `not_found`,
+`connection_error`, `timeout`).
+
 ### `ModuleNotFoundError: No module named 'src'`
 
 You need to install the package in development mode:
@@ -21,6 +26,8 @@ python -m src.cli --help
 - Verify the `dataiku.host` URL in `config/config.yaml` is correct and reachable.
 - Check that your Dataiku instance is running and the API is enabled.
 - If behind a VPN or firewall, ensure network access is allowed.
+- If your network requires an outbound proxy that isn't set via
+  `HTTPS_PROXY`/`HTTP_PROXY` env vars, set `dataiku.proxy_url` explicitly.
 
 ### `401 Unauthorized` from Dataiku API
 

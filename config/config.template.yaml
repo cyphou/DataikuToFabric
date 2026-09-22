@@ -10,6 +10,9 @@ dataiku:
   max_retries: 3
   verify_ssl: true                         # Set false only for trusted internal/self-signed environments
   ca_bundle_path: null                     # Optional path to custom CA bundle (preferred over verify_ssl=false)
+  proxy_url: null                          # Optional explicit outbound proxy (e.g. "http://proxy.corp:8080")
+                                            # for corporate networks; HTTPS_PROXY/HTTP_PROXY env vars are
+                                            # honored automatically when this is unset
 
 # ─── Target: Microsoft Fabric ───────────────
 fabric:

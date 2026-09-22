@@ -109,6 +109,30 @@ dataiku:
 
 > **Security:** Never commit `config/config.yaml` to version control. It is listed in `.gitignore`.
 
+### Corporate proxy / gateway-fronted Dataiku instances
+
+`HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` environment variables are honored
+automatically. If the toolkit runs in an environment where those aren't
+inherited (e.g. a service), set an explicit proxy in config:
+
+```yaml
+dataiku:
+  proxy_url: "http://proxy.corp:8080"
+```
+
+Redirects issued by gateways/reverse proxies in front of Dataiku (e.g.
+http→https, path rewrites) are followed automatically.
+
+### Verify the connection before running discovery
+
+```bash
+dataiku-to-fabric test-connection --project YOUR_PROJECT_KEY
+```
+
+This performs a single lightweight call and reports a clear, actionable
+error (unauthorized, forbidden, not found, TLS, timeout, connection error)
+instead of requiring a full `discover` run to diagnose auth/network issues.
+
 ## First Run
 
 ### 1. Discover assets

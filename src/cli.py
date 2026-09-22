@@ -102,6 +102,7 @@ def _build_orchestrator(config_path: str) -> Orchestrator:
             max_retries=cfg.dataiku.max_retries,
             verify_ssl=cfg.dataiku.verify_ssl,
             ca_bundle_path=cfg.dataiku.ca_bundle_path,
+            proxy_url=cfg.dataiku.proxy_url,
         )
         orch.context.connectors["dataiku"] = dataiku_client
     except ValueError:
@@ -136,6 +137,32 @@ def cli():
 
     Automated migration of Dataiku projects to Microsoft Fabric.
     """
+
+
+# ── test-connection ──────────────────────────────────────────
+
+@cli.command(name="test-connection")
+@click.option("--project", "-p", required=True, help="Dataiku project key")
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+def test_connection(project: str, config: str):
+    """Verify connectivity and authentication to the Dataiku server.
+
+    Performs a single lightweight call (fetch project metadata) so auth and
+    network issues surface immediately, without running full discovery.
+    """
+    orch = _build_orchestrator(config)
+    client = orch.context.connectors.get("dataiku")
+    if not client:
+        click.echo("Dataiku client not configured — check DATAIKU_API_KEY and config.yaml.", err=True)
+        sys.exit(1)
+
+    result = asyncio.run(client.test_connection(project))
+    if result["success"]:
+        click.echo(f"OK: {result['message']}")
+        return
+
+    click.echo(f"FAILED [{result['category']}]: {result['message']}", err=True)
+    sys.exit(1)
 
 
 # ── discover ─────────────────────────────────────────────────

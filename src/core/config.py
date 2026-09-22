@@ -17,6 +17,7 @@ class DataikuConfig(BaseModel):
     max_retries: int = 3
     verify_ssl: bool = True
     ca_bundle_path: str | None = None
+    proxy_url: str | None = None
 
     @property
     def api_key(self) -> str:

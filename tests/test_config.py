@@ -22,6 +22,14 @@ class TestAppConfig:
         assert cfg.orchestrator.max_retries == 3
         assert cfg.logging.level == "INFO"
 
+    def test_proxy_url_defaults_to_none(self):
+        cfg = DataikuConfig(url="https://x.com", project_key="P")
+        assert cfg.proxy_url is None
+
+    def test_proxy_url_can_be_set(self):
+        cfg = DataikuConfig(url="https://x.com", project_key="P", proxy_url="http://proxy.corp:8080")
+        assert cfg.proxy_url == "http://proxy.corp:8080"
+
 
 class TestLoadConfig:
     def test_load_from_yaml(self, tmp_path):

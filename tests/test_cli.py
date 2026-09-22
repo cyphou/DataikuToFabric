@@ -163,6 +163,43 @@ class TestDiscover:
         assert "Discovering assets" in result.output
 
 
+# ── test-connection ──────────────────────────────────────────
+
+class TestTestConnectionCommand:
+    def test_success_reports_ok_and_exits_zero(self, runner, config_file):
+        env = {"TEST_DATAIKU_KEY": "fake-key-123"}
+        with patch(
+            "src.connectors.dataiku_client.DataikuClient.test_connection", new_callable=AsyncMock
+        ) as mock_tc:
+            mock_tc.return_value = {
+                "success": True, "category": "ok",
+                "message": "Connected to https://fake-dataiku.local — project 'CLI_TEST' found",
+                "project": {},
+            }
+            result = runner.invoke(cli, ["test-connection", "-p", "CLI_TEST", "-c", config_file], env=env)
+        assert result.exit_code == 0
+        assert "OK: Connected" in result.output
+
+    def test_failure_reports_category_and_exits_nonzero(self, runner, config_file):
+        env = {"TEST_DATAIKU_KEY": "fake-key-123"}
+        with patch(
+            "src.connectors.dataiku_client.DataikuClient.test_connection", new_callable=AsyncMock
+        ) as mock_tc:
+            mock_tc.return_value = {
+                "success": False, "category": "unauthorized",
+                "message": "Authentication rejected.",
+            }
+            result = runner.invoke(cli, ["test-connection", "-p", "CLI_TEST", "-c", config_file], env=env)
+        assert result.exit_code != 0
+        assert "FAILED [unauthorized]" in result.output
+
+    def test_missing_api_key_reports_client_not_configured(self, runner, config_file):
+        os.environ.pop("TEST_DATAIKU_KEY", None)
+        result = runner.invoke(cli, ["test-connection", "-p", "CLI_TEST", "-c", config_file])
+        assert result.exit_code != 0
+        assert "Dataiku client not configured" in result.output
+
+
 # ── Migrate ──────────────────────────────────────────────────
 
 class TestMigrate:

@@ -30,20 +30,29 @@ class DataikuClient:
         max_retries: int = 3,
         verify_ssl: bool = True,
         ca_bundle_path: str | None = None,
+        proxy_url: str | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
         self._max_retries = max_retries
         self._verify = ca_bundle_path if ca_bundle_path else verify_ssl
+        self._proxy_url = proxy_url
         self._client: httpx.AsyncClient | None = None
 
     async def _ensure_client(self) -> httpx.AsyncClient:
-        """Reuse a single httpx client (connection pool)."""
+        """Reuse a single httpx client (connection pool).
+
+        ``follow_redirects=True`` because some corporate gateways/reverse
+        proxies in front of Dataiku issue redirects (e.g. http→https, path
+        rewrites) that must be followed transparently during extraction.
+        """
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=self._timeout,
                 verify=self._verify,
+                follow_redirects=True,
+                proxy=self._proxy_url,
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {self._api_key}",
@@ -132,6 +141,51 @@ class DataikuClient:
     async def get_project(self, project_key: str) -> dict:
         """Get project metadata."""
         return await self._request("GET", f"/projects/{project_key}")
+
+    async def test_connection(self, project_key: str) -> dict:
+        """Verify server reachability and auth by fetching project metadata.
+
+        Returns a diagnostic dict with a ``category`` suited for actionable
+        CLI messages, without raising — callers decide how to report it.
+        """
+        try:
+            project = await self.get_project(project_key)
+            return {
+                "success": True,
+                "category": "ok",
+                "message": f"Connected to {self.base_url} — project '{project_key}' found",
+                "project": project,
+            }
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if status == 401:
+                category, hint = "unauthorized", (
+                    "Authentication rejected. Verify the API key is valid and not expired."
+                )
+            elif status == 403:
+                category, hint = "forbidden", (
+                    "API key is valid but lacks permission to read this project."
+                )
+            elif status == 404:
+                category, hint = "not_found", (
+                    f"Project '{project_key}' does not exist or is not visible to this API key."
+                )
+            else:
+                category, hint = "http_error", f"Unexpected HTTP {status} from server."
+            return {"success": False, "category": category, "message": hint, "status": status}
+        except httpx.ConnectError as e:
+            hint = "Connection failed — check the URL, network access, and proxy_url."
+            if "CERTIFICATE_VERIFY_FAILED" in str(e):
+                hint = "TLS certificate verification failed — set dataiku.ca_bundle_path."
+            return {"success": False, "category": "connection_error", "message": hint}
+        except (httpx.ConnectTimeout, httpx.ReadTimeout):
+            return {
+                "success": False,
+                "category": "timeout",
+                "message": "Server did not respond in time — check network/proxy or increase timeout_seconds.",
+            }
+        except httpx.RequestError as e:
+            return {"success": False, "category": "request_error", "message": str(e)}
 
     async def list_recipes(self, project_key: str) -> list[dict]:
         """List all recipes in a project."""

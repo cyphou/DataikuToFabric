@@ -80,6 +80,107 @@ class TestAuthentication:
         assert "apiKey" not in captured["params"]
 
 
+class TestConnectionSetup:
+    """Redirect-following and proxy support for gateway-fronted deployments."""
+
+    @pytest.mark.asyncio
+    async def test_follow_redirects_enabled(self, client):
+        http_client = await client._ensure_client()
+        assert http_client.follow_redirects is True
+
+    @pytest.mark.asyncio
+    async def test_proxy_url_forwarded_to_httpx_client(self):
+        c = DataikuClient(base_url=BASE_URL, api_key=API_KEY, proxy_url="http://proxy.corp:8080")
+        with patch("src.connectors.dataiku_client.httpx.AsyncClient") as mock_cls:
+            await c._ensure_client()
+        assert mock_cls.call_args.kwargs["proxy"] == "http://proxy.corp:8080"
+
+    @pytest.mark.asyncio
+    async def test_no_proxy_configured_by_default(self, client):
+        with patch("src.connectors.dataiku_client.httpx.AsyncClient") as mock_cls:
+            await client._ensure_client()
+        assert mock_cls.call_args.kwargs["proxy"] is None
+
+
+class TestConnectionTest:
+    """`test_connection()` classifies failures for actionable CLI diagnostics."""
+
+    @pytest.mark.asyncio
+    async def test_success(self, client):
+        project = {"projectKey": "PROJ", "name": "Test"}
+        with patch.object(client, "get_project", new_callable=AsyncMock, return_value=project):
+            result = await client.test_connection("PROJ")
+        assert result["success"] is True
+        assert result["category"] == "ok"
+        assert result["project"] == project
+
+    @pytest.mark.asyncio
+    async def test_unauthorized(self, client):
+        resp = httpx.Response(401, request=httpx.Request("GET", "https://x.com"))
+        err = httpx.HTTPStatusError("401", request=resp.request, response=resp)
+        with patch.object(client, "get_project", new_callable=AsyncMock, side_effect=err):
+            result = await client.test_connection("PROJ")
+        assert result["success"] is False
+        assert result["category"] == "unauthorized"
+
+    @pytest.mark.asyncio
+    async def test_forbidden(self, client):
+        resp = httpx.Response(403, request=httpx.Request("GET", "https://x.com"))
+        err = httpx.HTTPStatusError("403", request=resp.request, response=resp)
+        with patch.object(client, "get_project", new_callable=AsyncMock, side_effect=err):
+            result = await client.test_connection("PROJ")
+        assert result["category"] == "forbidden"
+
+    @pytest.mark.asyncio
+    async def test_not_found(self, client):
+        resp = httpx.Response(404, request=httpx.Request("GET", "https://x.com"))
+        err = httpx.HTTPStatusError("404", request=resp.request, response=resp)
+        with patch.object(client, "get_project", new_callable=AsyncMock, side_effect=err):
+            result = await client.test_connection("PROJ")
+        assert result["category"] == "not_found"
+
+    @pytest.mark.asyncio
+    async def test_other_http_error(self, client):
+        resp = httpx.Response(500, request=httpx.Request("GET", "https://x.com"))
+        err = httpx.HTTPStatusError("500", request=resp.request, response=resp)
+        with patch.object(client, "get_project", new_callable=AsyncMock, side_effect=err):
+            result = await client.test_connection("PROJ")
+        assert result["category"] == "http_error"
+        assert result["status"] == 500
+
+    @pytest.mark.asyncio
+    async def test_connection_error(self, client):
+        err = httpx.ConnectError("refused", request=httpx.Request("GET", "https://x.com"))
+        with patch.object(client, "get_project", new_callable=AsyncMock, side_effect=err):
+            result = await client.test_connection("PROJ")
+        assert result["category"] == "connection_error"
+
+    @pytest.mark.asyncio
+    async def test_ssl_error_gives_ca_bundle_hint(self, client):
+        err = httpx.ConnectError(
+            "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed",
+            request=httpx.Request("GET", "https://x.com"),
+        )
+        with patch.object(client, "get_project", new_callable=AsyncMock, side_effect=err):
+            result = await client.test_connection("PROJ")
+        assert result["category"] == "connection_error"
+        assert "ca_bundle_path" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_timeout(self, client):
+        err = httpx.ConnectTimeout("timed out", request=httpx.Request("GET", "https://x.com"))
+        with patch.object(client, "get_project", new_callable=AsyncMock, side_effect=err):
+            result = await client.test_connection("PROJ")
+        assert result["category"] == "timeout"
+
+    @pytest.mark.asyncio
+    async def test_generic_request_error(self, client):
+        err = httpx.RequestError("boom", request=httpx.Request("GET", "https://x.com"))
+        with patch.object(client, "get_project", new_callable=AsyncMock, side_effect=err):
+            result = await client.test_connection("PROJ")
+        assert result["category"] == "request_error"
+
+
 class TestListRecipes:
     @pytest.mark.asyncio
     async def test_list_recipes_returns_list(self, client):

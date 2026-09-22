@@ -58,7 +58,13 @@ Need a full install/config walkthrough? Use [docs/SETUP.md](docs/SETUP.md).
 
 ### More ways to migrate
 
-#### 🔍 Discover assets
+#### � Verify the Dataiku connection
+
+```bash
+dataiku-to-fabric test-connection --project MY_PROJECT
+```
+
+#### �🔍 Discover assets
 
 ```bash
 dataiku-to-fabric discover --project MY_PROJECT
@@ -337,6 +343,7 @@ Each agent runs in **parallel waves** (independent agents execute concurrently).
 | Flag | Description |
 |------|-------------|
 | **Commands** | |
+| `test-connection` | Verify Dataiku server connectivity and auth |
 | `discover` | Scan Dataiku project, catalog all assets |
 | `migrate` | Run full migration pipeline |
 | `validate` | Validate migrated assets |
