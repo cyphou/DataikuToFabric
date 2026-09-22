@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -706,16 +707,46 @@ def lineage(project: str, config: str, output_path: str | None, impact: str | No
 @click.option("--host", "-h", "host", default="127.0.0.1", help="Bind address")
 @click.option("--port", default=8080, help="Port number")
 @click.option("--config", "-c", default="config/config.yaml", help="Config file path")
-def serve(host: str, port: int, config: str):
+@click.option(
+    "--auth-mode",
+    type=click.Choice(["none", "api_key", "bearer"]),
+    default="none",
+    help="API authentication mode",
+)
+@click.option(
+    "--auth-secret-env",
+    default="API_AUTH_SECRET",
+    help="Env var holding the API auth secret (required unless --auth-mode=none)",
+)
+def serve(host: str, port: int, config: str, auth_mode: str, auth_secret_env: str):
     """Start the REST API server."""
     from src.api.server import create_server
     from src.api.job_manager import JobManager
 
+    auth_secret = os.environ.get(auth_secret_env) if auth_mode != "none" else None
+    if auth_mode != "none" and not auth_secret:
+        raise click.ClickException(
+            f"--auth-mode={auth_mode} requires env var {auth_secret_env} to be set"
+        )
+    if auth_mode == "none":
+        click.echo(
+            "WARNING: starting with --auth-mode=none (no authentication). "
+            "Use --auth-mode=api_key or --auth-mode=bearer for any network-exposed deployment.",
+            err=True,
+        )
+
     orch = _build_orchestrator(config)
     orch.registry.load()
 
-    server = create_server(host=host, port=port, registry=orch.registry, job_manager=JobManager())
-    click.echo(f"API server listening on http://{host}:{port}")
+    server = create_server(
+        host=host,
+        port=port,
+        registry=orch.registry,
+        job_manager=JobManager(),
+        auth_mode=auth_mode,
+        auth_secret=auth_secret,
+    )
+    click.echo(f"API server listening on http://{host}:{port} (auth_mode={auth_mode})")
     click.echo("Press Ctrl+C to stop.")
     try:
         server.serve_forever()

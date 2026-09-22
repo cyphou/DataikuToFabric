@@ -343,3 +343,34 @@ class TestAPIServer:
             assert data["status"] == "ok"
         finally:
             server.shutdown()
+
+
+class TestCreateJobBodyLimits:
+    """A spoofed/oversized Content-Length must not force an unbounded read."""
+
+    def test_oversized_content_length_rejected(self, api_server):
+        import socket
+
+        base, *_ = api_server
+        host, port = base.replace("http://", "").split(":")
+
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            request = (
+                "POST /api/jobs HTTP/1.1\r\n"
+                f"Host: {host}\r\n"
+                "Content-Type: application/json\r\n"
+                f"Content-Length: {MigrationAPIHandler.MAX_BODY_BYTES + 1}\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+            )
+            sock.sendall(request.encode())
+            response = sock.recv(4096).decode(errors="replace")
+
+        status_line = response.split("\r\n", 1)[0]
+        assert " 413 " in status_line
+
+    def test_normal_body_still_accepted(self, api_server):
+        base, *_ = api_server
+        status, data = _post(f"{base}/api/jobs", {"job_type": "normal"})
+        assert status == 201
+        assert data["job_type"] == "normal"

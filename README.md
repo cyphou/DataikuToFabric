@@ -109,8 +109,18 @@ dataiku-to-fabric merge --projects "PROJECT_A,PROJECT_B" --resolution newest
 #### 🌐 REST API server
 
 ```bash
+# Unauthenticated (local/dev only)
 dataiku-to-fabric serve --host 0.0.0.0 --port 8080
+
+# With auth enabled (recommended for any network-exposed deployment)
+export API_AUTH_SECRET="<A_STRONG_RANDOM_SECRET>"
+dataiku-to-fabric serve --host 0.0.0.0 --port 8080 --auth-mode bearer
 ```
+
+> [!WARNING]
+> `--auth-mode none` (the default) accepts unauthenticated requests. Always pass
+> `--auth-mode api_key` or `--auth-mode bearer` with a secret in `API_AUTH_SECRET`
+> (or `--auth-secret-env`) when binding to a non-loopback address.
 
 #### 🧪 Validation & reporting
 

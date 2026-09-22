@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any
@@ -20,6 +21,10 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
     job_manager: JobManager | None = None
     auth_mode: str = "none"  # none | api_key | bearer
     auth_secret: str | None = None
+
+    #: Reject request bodies larger than this to avoid unbounded memory reads
+    #: from a spoofed/oversized Content-Length header.
+    MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
 
     def _ensure_correlation_id(self) -> str:
         """Get correlation ID from request header or generate one."""
@@ -40,14 +45,14 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
 
         if mode == "api_key":
             provided = self.headers.get("X-API-Key", "")
-            return provided == secret
+            return hmac.compare_digest(provided, secret)
 
         if mode == "bearer":
             auth_header = self.headers.get("Authorization", "")
             if not auth_header.lower().startswith("bearer "):
                 return False
             token = auth_header.split(" ", 1)[1].strip()
-            return token == secret
+            return hmac.compare_digest(token, secret)
 
         return False
 
@@ -215,7 +220,16 @@ class MigrationAPIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Job manager not initialized"}, 503)
             return
 
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self._send_json({"error": "Invalid Content-Length header"}, 400)
+            return
+
+        if content_length > self.MAX_BODY_BYTES:
+            self._send_json({"error": "Request body too large"}, 413)
+            return
+
         if content_length > 0:
             body = self.rfile.read(content_length)
             try:

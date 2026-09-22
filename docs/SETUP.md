@@ -66,6 +66,7 @@ fabric:
   auth_method: "azure_cli"
   tenant_id_env: "AZURE_TENANT_ID"
   client_id_env: "AZURE_CLIENT_ID"
+  client_secret_env: "AZURE_CLIENT_SECRET"
 
 migration:
   output_dir: "output"

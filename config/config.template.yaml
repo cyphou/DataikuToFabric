@@ -16,9 +16,10 @@ fabric:
   workspace_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
   lakehouse_name: "lh_migrated"
   warehouse_name: "wh_migrated"
-  auth_method: "azure_cli"                # azure_cli | service_principal | managed_identity
+  auth_method: "azure_cli"                # azure_cli | service_principal | managed_identity | environment
   tenant_id_env: "AZURE_TENANT_ID"        # Required for service_principal
   client_id_env: "AZURE_CLIENT_ID"        # Required for service_principal
+  client_secret_env: "AZURE_CLIENT_SECRET" # Required for service_principal
 
 # ─── Migration Settings ─────────────────────
 migration:

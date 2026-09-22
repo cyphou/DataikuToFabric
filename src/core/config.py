@@ -33,6 +33,7 @@ class FabricConfig(BaseModel):
     auth_method: str = "azure_cli"
     tenant_id_env: str = "AZURE_TENANT_ID"
     client_id_env: str = "AZURE_CLIENT_ID"
+    client_secret_env: str = "AZURE_CLIENT_SECRET"
 
 
 class MigrationConfig(BaseModel):

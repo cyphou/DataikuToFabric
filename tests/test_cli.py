@@ -683,3 +683,70 @@ class TestConfigValidateFunction:
 
         issues = validate_config(str(path))
         assert any("CA bundle path does not exist" in i["message"] for i in issues)
+
+
+# ── Serve command auth wiring ────────────────────────────────
+
+class TestServeCommand:
+    """The `serve` command must actually be able to enable API auth (not just
+    accept the CLI flags silently) — regression coverage for a gap where
+    `create_server()` was always called with the none/none defaults.
+    """
+
+    def test_auth_mode_requires_secret_env(self, runner, config_file):
+        os.environ["TEST_DATAIKU_KEY"] = "fake"
+        os.environ.pop("MISSING_SECRET_XYZ", None)
+        try:
+            result = runner.invoke(
+                cli,
+                [
+                    "serve", "--config", config_file,
+                    "--auth-mode", "bearer",
+                    "--auth-secret-env", "MISSING_SECRET_XYZ",
+                ],
+            )
+            assert result.exit_code != 0
+            assert "MISSING_SECRET_XYZ" in result.output
+        finally:
+            os.environ.pop("TEST_DATAIKU_KEY", None)
+
+    def test_auth_mode_wires_secret_into_server(self, runner, config_file):
+        os.environ["TEST_DATAIKU_KEY"] = "fake"
+        os.environ["SERVE_TEST_SECRET"] = "s3cr3t"
+        try:
+            with patch("src.api.server.create_server") as mock_create:
+                mock_server = MagicMock()
+                mock_server.serve_forever.side_effect = KeyboardInterrupt()
+                mock_create.return_value = mock_server
+
+                runner.invoke(
+                    cli,
+                    [
+                        "serve", "--config", config_file,
+                        "--auth-mode", "bearer",
+                        "--auth-secret-env", "SERVE_TEST_SECRET",
+                    ],
+                )
+
+                assert mock_create.called
+                kwargs = mock_create.call_args.kwargs
+                assert kwargs["auth_mode"] == "bearer"
+                assert kwargs["auth_secret"] == "s3cr3t"
+        finally:
+            os.environ.pop("TEST_DATAIKU_KEY", None)
+            os.environ.pop("SERVE_TEST_SECRET", None)
+
+    def test_default_auth_mode_is_none_with_warning(self, runner, config_file):
+        os.environ["TEST_DATAIKU_KEY"] = "fake"
+        try:
+            with patch("src.api.server.create_server") as mock_create:
+                mock_server = MagicMock()
+                mock_server.serve_forever.side_effect = KeyboardInterrupt()
+                mock_create.return_value = mock_server
+
+                result = runner.invoke(cli, ["serve", "--config", config_file])
+
+                assert mock_create.call_args.kwargs["auth_mode"] == "none"
+                assert "no authentication" in result.output.lower()
+        finally:
+            os.environ.pop("TEST_DATAIKU_KEY", None)

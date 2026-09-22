@@ -21,27 +21,51 @@ FABRIC_SCOPE = "https://api.fabric.microsoft.com/.default"
 def _acquire_token(config: Any) -> str:
     """Acquire an Azure AD token using the configured auth method.
 
-    Supports: azure_cli, environment, token (pre-acquired).
-    Falls back to DefaultAzureCredential if azure-identity is installed.
+    Supports: azure_cli, service_principal, managed_identity, environment,
+    and a pre-acquired token (``FABRIC_ACCESS_TOKEN`` env var, e.g. for tests).
     """
     auth_method = getattr(config, "auth_method", "azure_cli")
 
-    # Allow a pre-acquired token via env var for testing
+    # Allow a pre-acquired token via env var for testing/manual overrides
     env_token = os.environ.get("FABRIC_ACCESS_TOKEN")
     if env_token:
         return env_token
 
     try:
-        from azure.identity import DefaultAzureCredential
-
-        credential = DefaultAzureCredential()
-        token = credential.get_token(FABRIC_SCOPE)
-        return token.token
+        from azure.identity import (
+            AzureCliCredential,
+            ClientSecretCredential,
+            DefaultAzureCredential,
+            EnvironmentCredential,
+            ManagedIdentityCredential,
+        )
     except ImportError:
         raise RuntimeError(
             "azure-identity package not installed. Install with: "
             "pip install azure-identity  or set FABRIC_ACCESS_TOKEN env var."
         )
+
+    if auth_method == "azure_cli":
+        credential = AzureCliCredential()
+    elif auth_method == "managed_identity":
+        credential = ManagedIdentityCredential()
+    elif auth_method == "environment":
+        credential = EnvironmentCredential()
+    elif auth_method == "service_principal":
+        tenant_id = os.environ.get(getattr(config, "tenant_id_env", "AZURE_TENANT_ID"), "")
+        client_id = os.environ.get(getattr(config, "client_id_env", "AZURE_CLIENT_ID"), "")
+        client_secret = os.environ.get(getattr(config, "client_secret_env", "AZURE_CLIENT_SECRET"), "")
+        if not (tenant_id and client_id and client_secret):
+            raise RuntimeError(
+                "auth_method=service_principal requires tenant_id_env, client_id_env, "
+                "and client_secret_env to each resolve to a non-empty environment variable."
+            )
+        credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+    else:
+        credential = DefaultAzureCredential()
+
+    token = credential.get_token(FABRIC_SCOPE)
+    return token.token
 
 
 class FabricClient:

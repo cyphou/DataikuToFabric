@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `serve` command now supports `--auth-mode` (`api_key`/`bearer`) with a required secret env var; previously the underlying auth support existed but the CLI never wired it, so `serve` always ran unauthenticated regardless of intent
+- API server compares API keys/bearer tokens with `hmac.compare_digest` instead of `==` to avoid timing side-channels
+- `POST /api/jobs` rejects requests whose declared `Content-Length` exceeds 10 MB (or is non-numeric) before reading the body, preventing an unbounded-read memory exhaustion vector
+- Fabric OAuth token acquisition (`_acquire_token`) now actually honors `fabric.auth_method` (`azure_cli`, `managed_identity`, `environment`, `service_principal`) instead of always using `DefaultAzureCredential`; added `client_secret_env` config field required for `service_principal`
+
 ### Fixed
 - Dataiku client now authenticates via `Authorization: Bearer <api_key>` header instead of the `?apiKey=` query parameter, which some Dataiku deployments (e.g. behind gateways/reverse proxies) reject with a 401 even for valid keys
 

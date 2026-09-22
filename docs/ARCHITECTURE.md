@@ -294,9 +294,10 @@ fabric:
   workspace_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
   lakehouse_name: "lh_customer_360"
   warehouse_name: "wh_customer_360"
-  auth_method: "azure_cli"            # azure_cli | service_principal | managed_identity
+  auth_method: "azure_cli"            # azure_cli | service_principal | managed_identity | environment
   tenant_id_env: "AZURE_TENANT_ID"
   client_id_env: "AZURE_CLIENT_ID"
+  client_secret_env: "AZURE_CLIENT_SECRET"
 
 # ─── Migration Settings ─────────────────────
 migration:
