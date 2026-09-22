@@ -64,7 +64,9 @@ class DiscoveryAgent(BaseAgent):
         review_flags: list[str] = []
 
         try:
-            # Discover recipes
+            # Discover recipes. Each recipe's detail is fetched individually,
+            # so one bad/inaccessible recipe must not abort discovery of the
+            # rest — skip it and flag it for review instead.
             recipes = await client.list_recipes(project_key)
             for recipe in recipes:
                 recipe_type = recipe.get("type", "").lower()
@@ -73,7 +75,13 @@ class DiscoveryAgent(BaseAgent):
                     logger.warning("unknown_recipe_type", type=recipe_type, name=recipe.get("name"))
                     continue
 
-                detail = await client.get_recipe(project_key, recipe["name"])
+                try:
+                    detail = await client.get_recipe(project_key, recipe["name"])
+                except Exception as e:
+                    logger.warning("recipe_discovery_failed", recipe=recipe.get("name"), error=str(e))
+                    review_flags.append(f"Recipe '{recipe.get('name')}' not discovered: {e}")
+                    continue
+
                 inputs = [ref.get("ref", "") for ref in detail.get("inputs", {}).get("main", {}).get("items", [])]
                 outputs = [ref.get("ref", "") for ref in detail.get("outputs", {}).get("main", {}).get("items", [])]
 
@@ -95,10 +103,18 @@ class DiscoveryAgent(BaseAgent):
                 registry.add_asset(asset)
                 processed += 1
 
-            # Discover datasets
+            # Discover datasets. Schema retrieval can fail independently of
+            # the dataset listing (e.g. schema not yet computed) — skip that
+            # one dataset rather than losing everything discovered so far.
             datasets = await client.list_datasets(project_key)
             for ds in datasets:
-                schema = await client.get_dataset_schema(project_key, ds["name"])
+                try:
+                    schema = await client.get_dataset_schema(project_key, ds["name"])
+                except Exception as e:
+                    logger.warning("dataset_schema_discovery_failed", dataset=ds.get("name"), error=str(e))
+                    review_flags.append(f"Dataset '{ds.get('name')}' schema not discovered: {e}")
+                    continue
+
                 asset = Asset(
                     id=f"dataset_{ds['name']}",
                     type=AssetType.DATASET,
@@ -146,32 +162,40 @@ class DiscoveryAgent(BaseAgent):
                     f"Connections not discovered (requires admin API key): {e}"
                 )
 
-            # Discover flow
-            flow = await client.get_flow(project_key)
-            asset = Asset(
-                id=f"flow_{project_key}",
-                type=AssetType.FLOW,
-                name=f"{project_key}_flow",
-                source_project=project_key,
-                state=MigrationState.DISCOVERED,
-                metadata=flow,
-            )
-            registry.add_asset(asset)
-            processed += 1
-
-            # Discover scenarios
-            scenarios = await client.list_scenarios(project_key)
-            for scenario in scenarios:
+            # Discover flow — non-critical, degrade gracefully.
+            try:
+                flow = await client.get_flow(project_key)
                 asset = Asset(
-                    id=f"scenario_{scenario['id']}",
-                    type=AssetType.SCENARIO,
-                    name=scenario.get("name", scenario["id"]),
+                    id=f"flow_{project_key}",
+                    type=AssetType.FLOW,
+                    name=f"{project_key}_flow",
                     source_project=project_key,
                     state=MigrationState.DISCOVERED,
-                    metadata=scenario,
+                    metadata=flow,
                 )
                 registry.add_asset(asset)
                 processed += 1
+            except Exception as e:
+                logger.warning("flow_discovery_failed", error=str(e))
+                review_flags.append(f"Flow not discovered: {e}")
+
+            # Discover scenarios — non-critical, degrade gracefully.
+            try:
+                scenarios = await client.list_scenarios(project_key)
+                for scenario in scenarios:
+                    asset = Asset(
+                        id=f"scenario_{scenario['id']}",
+                        type=AssetType.SCENARIO,
+                        name=scenario.get("name", scenario["id"]),
+                        source_project=project_key,
+                        state=MigrationState.DISCOVERED,
+                        metadata=scenario,
+                    )
+                    registry.add_asset(asset)
+                    processed += 1
+            except Exception as e:
+                logger.warning("scenarios_discovery_failed", error=str(e))
+                review_flags.append(f"Scenarios not discovered: {e}")
 
             # Discover saved models
             try:
@@ -189,6 +213,7 @@ class DiscoveryAgent(BaseAgent):
                     processed += 1
             except Exception as e:
                 logger.warning("saved_models_discovery_failed", error=str(e))
+                review_flags.append(f"Saved models not discovered: {e}")
 
             # Discover dashboards
             try:
@@ -206,6 +231,7 @@ class DiscoveryAgent(BaseAgent):
                     processed += 1
             except Exception as e:
                 logger.warning("dashboards_discovery_failed", error=str(e))
+                review_flags.append(f"Dashboards not discovered: {e}")
 
             registry.save()
             logger.info("discovery_complete", project=project_key, assets=processed)
@@ -220,11 +246,19 @@ class DiscoveryAgent(BaseAgent):
 
         except Exception as e:
             logger.error("discovery_failed", error=str(e))
+            # Best-effort: persist whatever was discovered before the fatal
+            # error so a re-run isn't starting from zero.
+            try:
+                if processed:
+                    registry.save()
+            except Exception:
+                pass
             return AgentResult(
                 agent_name=self.name,
                 status=AgentStatus.FAILED,
                 assets_processed=processed,
                 errors=[str(e)],
+                review_flags=review_flags,
             )
 
     async def validate(self, context: Any) -> ValidationResult:

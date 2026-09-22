@@ -188,6 +188,105 @@ class TestDiscoveryConnectionsGracefulDegradation:
         assert ctx.registry.get_by_type(AssetType.SCENARIO)
 
 
+class TestDiscoveryPartialFailureResilience:
+    """A single bad recipe/dataset/flow/scenario must not abort the whole
+    discovery run or lose already-discovered assets.
+    """
+
+    @pytest.mark.asyncio
+    async def test_one_bad_recipe_does_not_block_others(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+
+        async def _get_recipe(project_key: str, recipe_name: str) -> dict:
+            if recipe_name == "compute_orders":
+                raise RuntimeError("500 Internal Server Error")
+            return fixtures["recipe_details"].get(recipe_name, {"name": recipe_name})
+
+        client.get_recipe = AsyncMock(side_effect=_get_recipe)
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert ctx.registry.get_asset("recipe_compute_orders") is None
+        assert ctx.registry.get_asset("recipe_transform_data") is not None
+        assert any("compute_orders" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_one_bad_dataset_schema_does_not_block_others(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+
+        async def _get_schema(project_key: str, dataset_name: str) -> dict:
+            if dataset_name == "raw_orders":
+                raise RuntimeError("schema not computed")
+            for ds in fixtures["datasets"]:
+                if ds["name"] == dataset_name:
+                    return ds.get("schema", {"columns": []})
+            return {"columns": []}
+
+        client.get_dataset_schema = AsyncMock(side_effect=_get_schema)
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert ctx.registry.get_asset("dataset_raw_orders") is None
+        assert ctx.registry.get_asset("dataset_products") is not None
+        assert any("raw_orders" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_flow_failure_degrades_gracefully(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.get_flow = AsyncMock(side_effect=RuntimeError("boom"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert ctx.registry.get_by_type(AssetType.FLOW) == []
+        assert any("Flow not discovered" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_scenarios_failure_degrades_gracefully(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_scenarios = AsyncMock(side_effect=RuntimeError("boom"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert ctx.registry.get_by_type(AssetType.SCENARIO) == []
+        assert any("Scenarios not discovered" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_fatal_error_persists_partial_progress(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_datasets = AsyncMock(side_effect=RuntimeError("fatal listing error"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "failed"
+        assert result.assets_processed > 0
+        assert ctx.registry.registry_path.exists()
+        assert ctx.registry.get_asset("recipe_compute_orders") is not None
+
+
 class TestDiscoveryRecipes:
     """Recipe discovery specifics."""
 

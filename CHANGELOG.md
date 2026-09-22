@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Discovery agent no longer loses all previously-discovered assets when a single recipe's detail fetch or a single dataset's schema fetch fails — each item is now handled independently and flagged for review instead of aborting the whole `discover` run
+- `get_flow()` and `list_scenarios()` failures now degrade gracefully (review flag) instead of aborting discovery, matching the pattern already used for connections, saved models, and dashboards
+- A fatal discovery error (e.g. `list_datasets()` itself failing) now persists whatever assets were already discovered to `registry.json` before returning, instead of silently discarding all progress from that run
 - Discovery agent no longer fails the entire `discover` run when `list_connections()` (Dataiku's `/admin/connections/` endpoint) is unreachable with a project-scoped API key; it now logs a review flag and continues discovering all other asset types, matching the existing graceful-degradation pattern already used for saved models and dashboards
 
 ### Added
