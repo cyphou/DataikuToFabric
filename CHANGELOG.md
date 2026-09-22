@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `run_data_migration()` no longer leaks the local exported staging file to disk forever after a successful upload — it's now deleted once the data has reached its destination in OneLake, and only kept when a step fails (for debugging/retry)
+- `run_data_migration()` now catches exceptions from any pipeline step and returns `status: "failed"` instead of propagating a raw exception, so migrating many datasets can isolate one failure from the rest
 - `export_dataset()` and `export_dataset_to_file()` (Dataiku data extraction) now retry transient errors (429/5xx/connection errors) with the same backoff policy as `_request()`, instead of failing on the first blip during a large export
 - `export_dataset_to_file()` now streams into a `.part` temp file and renames it atomically on success, so an interrupted/failed download never leaves a corrupt or truncated file at the final output path
 - Discovery agent no longer loses all previously-discovered assets when a single recipe's detail fetch or a single dataset's schema fetch fails — each item is now handled independently and flagged for review instead of aborting the whole `discover` run

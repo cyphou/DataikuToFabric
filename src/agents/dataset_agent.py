@@ -519,7 +519,10 @@ async def run_data_migration(
 
     Steps: export → upload → load → verify row counts.
 
-    Returns a result dict with status and details from each step.
+    Returns a result dict with status and details from each step. Any
+    exception is caught and returned as ``status: "failed"`` so a caller
+    migrating many datasets can isolate one failure from the rest, matching
+    the graceful-degradation pattern used elsewhere in extraction/migration.
     """
     config = context.config
     dataiku_client = context.connectors.get("dataiku")
@@ -537,47 +540,62 @@ async def run_data_migration(
     # Check for incremental watermark
     inc_col, inc_val = get_watermark(asset.metadata)
 
-    # Step 1: Export from Dataiku
-    export_result = await export_dataset(
-        dataiku_client, project_key, table_name, staging_dir,
-        fmt=export_format,
-        incremental_column=inc_col,
-        watermark_value=inc_val,
-    )
-
-    local_path = export_result["path"]
-    ext = "parquet" if "parquet" in export_format else "csv"
-    dest_path = f"Files/staging/{table_name}.{ext}"
-
-    # Step 2: Upload to OneLake
-    lakehouse_id = getattr(config.fabric, "lakehouse_id", config.fabric.workspace_id)
-    upload_result = await upload_dataset(
-        fabric_client, lakehouse_id, local_path, dest_path,
-        chunk_size_mb=config.migration.chunk_size_mb,
-        upload_method=config.migration.upload_method,
-    )
-
-    # Step 3: Load into Delta table (lakehouse only)
-    load_result = {}
-    if storage == "lakehouse":
-        load_result = await load_into_table(
-            fabric_client, lakehouse_id, table_name, dest_path,
-            file_format=ext, mode=config.migration.load_mode,
+    try:
+        # Step 1: Export from Dataiku
+        export_result = await export_dataset(
+            dataiku_client, project_key, table_name, staging_dir,
+            fmt=export_format,
+            incremental_column=inc_col,
+            watermark_value=inc_val,
         )
 
-    # Step 4: Verify row counts
-    warehouse_id = getattr(config.fabric, "warehouse_id", None)
-    verify_result = await verify_row_counts(
-        dataiku_client, fabric_client,
-        project_key, table_name,
-        warehouse_id=warehouse_id if storage == "warehouse" else None,
-        table_name=table_name,
-    )
+        local_path = export_result["path"]
+        ext = "parquet" if "parquet" in export_format else "csv"
+        dest_path = f"Files/staging/{table_name}.{ext}"
 
-    return {
-        "status": "completed",
-        "export": export_result,
-        "upload": upload_result,
-        "load": load_result,
-        "row_count_verification": verify_result,
-    }
+        # Step 2: Upload to OneLake
+        lakehouse_id = getattr(config.fabric, "lakehouse_id", config.fabric.workspace_id)
+        upload_result = await upload_dataset(
+            fabric_client, lakehouse_id, local_path, dest_path,
+            chunk_size_mb=config.migration.chunk_size_mb,
+            upload_method=config.migration.upload_method,
+        )
+
+        # Step 3: Load into Delta table (lakehouse only)
+        load_result = {}
+        if storage == "lakehouse":
+            load_result = await load_into_table(
+                fabric_client, lakehouse_id, table_name, dest_path,
+                file_format=ext, mode=config.migration.load_mode,
+            )
+
+        # Step 4: Verify row counts
+        warehouse_id = getattr(config.fabric, "warehouse_id", None)
+        verify_result = await verify_row_counts(
+            dataiku_client, fabric_client,
+            project_key, table_name,
+            warehouse_id=warehouse_id if storage == "warehouse" else None,
+            table_name=table_name,
+        )
+
+        # The data has now reached its destination — don't leave every
+        # exported dataset's full file sitting on local disk forever.
+        try:
+            Path(local_path).unlink(missing_ok=True)
+        except OSError as cleanup_err:
+            logger.warning("staging_file_cleanup_failed", path=local_path, error=str(cleanup_err))
+
+        return {
+            "status": "completed",
+            "export": export_result,
+            "upload": upload_result,
+            "load": load_result,
+            "row_count_verification": verify_result,
+        }
+
+    except Exception as e:
+        # Keep the local staging file (if any was created) on failure — useful
+        # for debugging and avoids a retry having to re-export from Dataiku.
+        logger.error("data_migration_failed", dataset=table_name, error=str(e))
+        return {"status": "failed", "dataset": table_name, "error": str(e)}
+

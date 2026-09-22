@@ -572,6 +572,73 @@ class TestRunDataMigration:
         assert result["status"] == "completed"
         fabric.upload_via_azcopy.assert_called_once()
 
+    def test_staging_file_removed_after_successful_pipeline(self, tmp_path: Path):
+        """The exported local file must not be left on disk once the data
+        has reached its destination — otherwise every migrated dataset's
+        full export would accumulate on disk forever.
+        """
+        dataiku = AsyncMock()
+        fabric = AsyncMock()
+
+        export_file = tmp_path / "orders.parquet"
+        export_file.write_bytes(b"fake-parquet-data")
+        dataiku.export_dataset_to_file.return_value = {
+            "path": str(export_file),
+            "bytes": 17,
+            "incremental": False,
+        }
+        fabric.upload_to_lakehouse.return_value = {"status": "ok", "chunks": 1}
+        fabric.load_table.return_value = {"status": "ok"}
+        dataiku.get_dataset_row_count.return_value = 100
+        fabric.query_row_count.return_value = None
+
+        asset = _make_asset(target={"storage": "lakehouse"})
+        ctx = self._make_context(dataiku_client=dataiku, fabric_client=fabric)
+
+        result = asyncio.run(run_data_migration(ctx, asset, tmp_path))
+
+        assert result["status"] == "completed"
+        assert not export_file.exists()
+
+    def test_staging_file_kept_when_upload_fails(self, tmp_path: Path):
+        """A failure after export must not delete the local export — it's
+        needed for debugging and so a retry doesn't have to re-export.
+        """
+        dataiku = AsyncMock()
+        fabric = AsyncMock()
+
+        export_file = tmp_path / "orders.parquet"
+        export_file.write_bytes(b"fake-parquet-data")
+        dataiku.export_dataset_to_file.return_value = {
+            "path": str(export_file),
+            "bytes": 17,
+            "incremental": False,
+        }
+        fabric.upload_to_lakehouse.side_effect = RuntimeError("upload failed")
+
+        asset = _make_asset(target={"storage": "lakehouse"})
+        ctx = self._make_context(dataiku_client=dataiku, fabric_client=fabric)
+
+        result = asyncio.run(run_data_migration(ctx, asset, tmp_path))
+
+        assert result["status"] == "failed"
+        assert "upload failed" in result["error"]
+        assert export_file.exists()
+
+    def test_export_failure_returns_failed_status_not_exception(self, tmp_path: Path):
+        dataiku = AsyncMock()
+        fabric = AsyncMock()
+        dataiku.export_dataset_to_file.side_effect = RuntimeError("dataiku unreachable")
+
+        asset = _make_asset(target={"storage": "lakehouse"})
+        ctx = self._make_context(dataiku_client=dataiku, fabric_client=fabric)
+
+        result = asyncio.run(run_data_migration(ctx, asset, tmp_path))
+
+        assert result["status"] == "failed"
+        assert result["dataset"] == asset.name
+        assert "dataiku unreachable" in result["error"]
+
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 7. LARGE_FILE_THRESHOLD constant
