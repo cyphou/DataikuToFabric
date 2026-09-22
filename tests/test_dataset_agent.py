@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -46,6 +47,11 @@ class StubMigrationConfig:
     output_dir: str = "./output"
     default_storage: str = "lakehouse"
     target_sql_dialect: str = "tsql"
+    export_format: str = "parquet"
+    chunk_size_mb: int = 4
+    upload_method: str = "httpx"
+    load_mode: str = "overwrite"
+    migrate_data: bool = False
 
 
 @dataclass
@@ -64,6 +70,7 @@ class StubConfig:
 class StubContext:
     registry: Any = None
     config: Any = None
+    connectors: dict = field(default_factory=dict)
 
 
 def _make_dataset_asset(
@@ -404,6 +411,84 @@ class TestDatasetAgentExecute:
 
         ddl_path = Path(ctx.config.migration.output_dir) / "ddl" / "partitioned.sql"
         assert "PARTITIONED BY (created_at)" in ddl_path.read_text()
+
+
+# ═══════════════════════════════════════════════════════════════
+# 6b. migrate_data wiring — opt-in actual data movement
+# ═══════════════════════════════════════════════════════════════
+
+class TestDatasetAgentMigrateData:
+    """`migrate_data: True` must invoke run_data_migration() per dataset,
+    isolating one dataset's data-migration failure from the others.
+    """
+
+    @pytest.fixture
+    def agent(self):
+        return DatasetMigrationAgent()
+
+    @pytest.fixture
+    def ctx(self, tmp_path):
+        reg = AssetRegistry("TEST", registry_path=tmp_path / "reg.json")
+        cfg = StubConfig(migration=StubMigrationConfig(
+            output_dir=str(tmp_path / "out"), migrate_data=True,
+        ))
+        return StubContext(
+            registry=reg, config=cfg,
+            connectors={"dataiku": AsyncMock(), "fabric": AsyncMock()},
+        )
+
+    def test_off_by_default_does_not_call_run_data_migration(self, tmp_path):
+        reg = AssetRegistry("TEST", registry_path=tmp_path / "reg.json")
+        cfg = StubConfig(migration=StubMigrationConfig(output_dir=str(tmp_path / "out")))
+        ctx = StubContext(registry=reg, config=cfg, connectors={"dataiku": AsyncMock(), "fabric": AsyncMock()})
+        ctx.registry.add_asset(_make_dataset_asset("orders", SAMPLE_COLUMNS))
+
+        with patch("src.agents.dataset_agent.run_data_migration", new_callable=AsyncMock) as mock_run:
+            asyncio.run(DatasetMigrationAgent().execute(ctx))
+
+        mock_run.assert_not_called()
+
+    def test_enabled_calls_run_data_migration_per_dataset(self, agent, ctx):
+        ctx.registry.add_asset(_make_dataset_asset("orders", SAMPLE_COLUMNS))
+        ctx.registry.add_asset(_make_dataset_asset("customers", SAMPLE_COLUMNS))
+
+        with patch(
+            "src.agents.dataset_agent.run_data_migration", new_callable=AsyncMock,
+            return_value={"status": "completed"},
+        ) as mock_run:
+            asyncio.run(agent.execute(ctx))
+
+        assert mock_run.call_count == 2
+
+    def test_data_migration_result_stored_on_target(self, agent, ctx):
+        ctx.registry.add_asset(_make_dataset_asset("orders", SAMPLE_COLUMNS))
+
+        with patch(
+            "src.agents.dataset_agent.run_data_migration", new_callable=AsyncMock,
+            return_value={"status": "completed", "row_count_verification": {"match": True}},
+        ):
+            asyncio.run(agent.execute(ctx))
+
+        target = ctx.registry.get_asset("ds_orders").target_fabric_asset
+        assert target["data_migration"]["status"] == "completed"
+
+    def test_one_dataset_data_migration_failure_does_not_block_others(self, agent, ctx):
+        ctx.registry.add_asset(_make_dataset_asset("bad", SAMPLE_COLUMNS))
+        ctx.registry.add_asset(_make_dataset_asset("good", SAMPLE_COLUMNS))
+
+        async def _fake_run(context, asset, staging_dir):
+            if asset.name == "bad":
+                return {"status": "failed", "error": "upload timeout"}
+            return {"status": "completed"}
+
+        with patch("src.agents.dataset_agent.run_data_migration", side_effect=_fake_run):
+            result = asyncio.run(agent.execute(ctx))
+
+        assert result.assets_converted == 2
+        assert result.assets_failed == 0
+        assert any("bad" in flag and "upload timeout" in flag for flag in result.review_flags)
+        good_target = ctx.registry.get_asset("ds_good").target_fabric_asset
+        assert good_target["data_migration"]["status"] == "completed"
 
 
 # ═══════════════════════════════════════════════════════════════

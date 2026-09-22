@@ -38,6 +38,7 @@ migration:
   compression: "snappy"                   # snappy | gzip | none
   upload_method: "httpx"                  # httpx | azcopy (auto-fallback for >100MB)
   load_mode: "overwrite"                  # overwrite | append
+  migrate_data: false                     # Opt-in: also export/upload/load actual data (see --with-data)
 
 # ─── Orchestrator ────────────────────────────
 orchestrator:

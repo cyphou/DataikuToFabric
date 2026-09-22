@@ -18,7 +18,7 @@ from click.testing import CliRunner
 
 from src.cli import cli, _format_output, _format_table
 from src.core.registry import AssetRegistry
-from src.models.asset import Asset, AssetType
+from src.models.asset import Asset, AssetType, MigrationState
 
 
 @pytest.fixture()
@@ -213,6 +213,26 @@ class TestMigrate:
             "migrate", "-p", "TEST", "-t", "ws-000", "-c", config_file, "-q",
         ], env=env)
         assert "Migrating project" in result.output
+
+    def test_migrate_with_data_flag_enables_config(self, runner, config_file):
+        """--with-data must flip migration.migrate_data on the built orchestrator."""
+        env = {"TEST_DATAIKU_KEY": "fake-key-123"}
+        captured: dict = {}
+
+        from src.cli import _build_orchestrator as real_build
+
+        def _spy_build(config_path):
+            orch = real_build(config_path)
+            captured["orch"] = orch
+            return orch
+
+        with patch("src.cli._build_orchestrator", side_effect=_spy_build):
+            runner.invoke(cli, [
+                "migrate", "-p", "TEST", "-t", "ws-000", "-c", config_file,
+                "--with-data", "--dry-run",
+            ], env=env)
+
+        assert captured["orch"].config.migration.migrate_data is True
 
     def test_migrate_with_resume_flag(self, runner, config_file):
         env = {"TEST_DATAIKU_KEY": "fake-key-123"}
@@ -787,3 +807,61 @@ class TestServeCommand:
                 assert "no authentication" in result.output.lower()
         finally:
             os.environ.pop("TEST_DATAIKU_KEY", None)
+
+
+# ── publish-powerbi ──────────────────────────────────────────
+
+class TestPublishPowerBI:
+    """`publish-powerbi` builds a DirectLake semantic model from migrated
+    lakehouse datasets and publishes it via FabricClient.create_semantic_model.
+    """
+
+    def test_no_fabric_client_reports_error(self, runner, config_file):
+        os.environ["TEST_DATAIKU_KEY"] = "fake-key-123"
+        try:
+            with patch("src.cli._acquire_token", side_effect=RuntimeError("no azure auth")):
+                result = runner.invoke(cli, ["publish-powerbi", "-p", "CLI_TEST", "-c", config_file])
+            assert result.exit_code != 0
+            assert "Fabric client not configured" in result.output
+        finally:
+            os.environ.pop("TEST_DATAIKU_KEY", None)
+
+    def test_no_lakehouse_datasets_reports_error(self, runner, config_file):
+        os.environ["TEST_DATAIKU_KEY"] = "fake-key-123"
+        os.environ["FABRIC_ACCESS_TOKEN"] = "fake-token"
+        try:
+            result = runner.invoke(cli, ["publish-powerbi", "-p", "CLI_TEST", "-c", config_file])
+            assert result.exit_code != 0
+            assert "No lakehouse-backed datasets" in result.output
+        finally:
+            os.environ.pop("TEST_DATAIKU_KEY", None)
+            os.environ.pop("FABRIC_ACCESS_TOKEN", None)
+
+    def test_publishes_semantic_model_from_converted_datasets(self, runner, config_file):
+        output_dir = Path(yaml.safe_load(Path(config_file).read_text())["migration"]["output_dir"])
+        reg = AssetRegistry(project_key="CLI_TEST", registry_path=output_dir / "registry.json")
+        reg.add_asset(Asset(
+            id="ds_orders", type=AssetType.DATASET, name="orders",
+            source_project="CLI_TEST", state=MigrationState.CONVERTED,
+            metadata={"schema": {"columns": [{"name": "id", "type": "int"}]}},
+            target_fabric_asset={"storage": "lakehouse"},
+        ))
+        reg.save()
+
+        os.environ["TEST_DATAIKU_KEY"] = "fake-key-123"
+        os.environ["FABRIC_ACCESS_TOKEN"] = "fake-token"
+        try:
+            from src.connectors.fabric_client import FabricClient
+            with patch.object(FabricClient, "create_semantic_model", new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = {"id": "sm-1", "displayName": "CLI_TEST_Model"}
+                result = runner.invoke(cli, ["publish-powerbi", "-p", "CLI_TEST", "-c", config_file])
+
+            assert result.exit_code == 0
+            assert "Semantic model published" in result.output
+            mock_create.assert_called_once()
+            name_arg, tmdl_files_arg = mock_create.call_args.args
+            assert name_arg == "CLI_TEST_Model"
+            assert "definition/tables/orders.tmdl" in tmdl_files_arg
+        finally:
+            os.environ.pop("TEST_DATAIKU_KEY", None)
+            os.environ.pop("FABRIC_ACCESS_TOKEN", None)

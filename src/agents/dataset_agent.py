@@ -224,6 +224,11 @@ class DatasetMigrationAgent(BaseAgent):
         manifest_dir = Path(config.migration.output_dir) / "manifests"
         manifest_dir.mkdir(parents=True, exist_ok=True)
 
+        staging_dir = Path(config.migration.output_dir) / "staging"
+        migrate_data = getattr(config.migration, "migrate_data", False)
+        if migrate_data:
+            staging_dir.mkdir(parents=True, exist_ok=True)
+
         dataset_assets = registry.get_by_type(AssetType.DATASET)
         processed = 0
         converted = 0
@@ -259,16 +264,30 @@ class DatasetMigrationAgent(BaseAgent):
                 manifest_file = manifest_dir / f"{asset.name}.json"
                 manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-                registry.set_target(asset.id, {
+                target_info = {
                     "type": f"{storage}_table",
                     "storage": storage,
                     "ddl_path": str(out_file),
                     "manifest_path": str(manifest_file),
                     "column_count": len(columns),
                     "target_table": manifest["target_path"],
-                })
+                }
+                registry.set_target(asset.id, target_info)
                 registry.update_state(asset.id, MigrationState.CONVERTED)
                 converted += 1
+
+                # Opt-in: actually move the data (export → upload → load →
+                # verify), not just generate DDL/manifests. One dataset's
+                # data-migration failure must not affect the others.
+                if migrate_data:
+                    asset.target_fabric_asset = target_info
+                    data_result = await run_data_migration(context, asset, staging_dir)
+                    target_info["data_migration"] = data_result
+                    registry.set_target(asset.id, target_info)
+                    if data_result.get("status") == "failed":
+                        flag = f"{asset.name}: data migration failed: {data_result.get('error')}"
+                        review_flags.append(flag)
+                        registry.add_review_flag(asset.id, flag)
 
             except Exception as e:
                 logger.error("dataset_migration_error", asset=asset.id, error=str(e))

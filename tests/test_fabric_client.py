@@ -115,3 +115,37 @@ class TestFabricClientHeaders:
     def test_bearer_header_set_from_access_token(self):
         client = FabricClient(workspace_id="ws-1", access_token="tok-abc")
         assert client._headers["Authorization"] == "Bearer tok-abc"
+
+
+class TestCreateSemanticModel:
+    """`create_semantic_model()` builds a multi-file InlineBase64 definition,
+    following the same pattern already used by create_notebook/create_pipeline.
+    """
+
+    @pytest.mark.asyncio
+    async def test_builds_parts_from_tmdl_files(self):
+        import base64
+        from unittest.mock import AsyncMock
+
+        client = FabricClient(workspace_id="ws-1", access_token="tok")
+        tmdl_files = {
+            "definition/database.tmdl": "database\n\tcompatibilityLevel: 1604\n",
+            "definition/tables/orders.tmdl": "table orders\n",
+        }
+        with patch.object(client, "create_item", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = {"id": "sm-1", "displayName": "Sales_Model"}
+            result = await client.create_semantic_model("Sales_Model", tmdl_files)
+
+        assert result["id"] == "sm-1"
+        mock_create.assert_called_once()
+        name_arg, type_arg, definition_arg = mock_create.call_args.args
+        assert name_arg == "Sales_Model"
+        assert type_arg == "SemanticModel"
+
+        parts = {p["path"]: p for p in definition_arg["parts"]}
+        assert set(parts) == set(tmdl_files)
+        for path, content in tmdl_files.items():
+            assert parts[path]["payloadType"] == "InlineBase64"
+            decoded = base64.b64decode(parts[path]["payload"]).decode("utf-8")
+            assert decoded == content
+

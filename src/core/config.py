@@ -50,6 +50,7 @@ class MigrationConfig(BaseModel):
     compression: str = "snappy"
     upload_method: str = "httpx"
     load_mode: str = "overwrite"
+    migrate_data: bool = False  # Opt-in: actually move data (export/upload/load), not just DDL
 
 
 class OrchestratorConfig(BaseModel):

@@ -201,15 +201,18 @@ def discover(project: str, config: str, fmt: str):
 @click.option("--asset-ids", default=None, help="Comma-separated asset IDs to process")
 @click.option("--keep-checkpoints", is_flag=True, default=False, help="Keep checkpoint files after completion")
 @click.option("--dry-run", is_flag=True, default=False, help="Print execution plan without running")
+@click.option("--with-data", "with_data", is_flag=True, default=False, help="Also export/upload/load actual dataset data, not just DDL")
 @click.option("--output-format", "-f", "fmt", type=click.Choice(["table", "json", "yaml"]), default="table", help="Output format")
 @click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress progress bars")
 def migrate(project: str, target: str, config: str, agents: tuple,
             resume: bool, rerun: tuple, asset_ids: str | None,
-            keep_checkpoints: bool, dry_run: bool, fmt: str, quiet: bool):
+            keep_checkpoints: bool, dry_run: bool, with_data: bool, fmt: str, quiet: bool):
     """Run full migration from Dataiku to Fabric."""
     orch = _build_orchestrator(config)
     orch.config.dataiku.project_key = project
     orch.config.fabric.workspace_id = target
+    if with_data:
+        orch.config.migration.migrate_data = True
 
     if resume:
         orch.registry.load()
@@ -829,6 +832,61 @@ def merge(projects: str, config: str, resolution: str, output_path: str | None, 
     if output_path:
         save_merge_report(assessment, output_path, dedup_result)
         click.echo(f"Merge report saved: {output_path}")
+
+
+# ── publish-powerbi ──────────────────────────────────────────
+
+@cli.command(name="publish-powerbi")
+@click.option("--project", "-p", required=True, help="Dataiku project key")
+@click.option("--config", "-c", default="config/config.yaml", help="Config file path")
+@click.option("--model-name", default=None, help="Semantic model display name (default: <project>_Model)")
+def publish_powerbi(project: str, config: str, model_name: str | None):
+    """Publish a DirectLake Power BI semantic model over migrated Lakehouse tables.
+
+    Requires `migrate` to have run first (dataset_migrator populates schema
+    and target table info for each dataset).
+    """
+    from src.models.asset import AssetType, MigrationState
+    from src.translators.powerbi_semantic_model import generate_semantic_model_tmdl
+
+    orch = _build_orchestrator(config)
+    orch.config.dataiku.project_key = project
+    orch.registry.load()
+
+    fabric_client = orch.context.connectors.get("fabric")
+    if not fabric_client:
+        click.echo("Fabric client not configured — check Azure auth and config.yaml.", err=True)
+        sys.exit(1)
+
+    tables = []
+    for asset in orch.registry.get_by_type(AssetType.DATASET):
+        target = asset.target_fabric_asset or {}
+        if asset.state != MigrationState.CONVERTED or target.get("storage") != "lakehouse":
+            continue
+        columns = asset.metadata.get("schema", {}).get("columns", [])
+        if not columns:
+            continue
+        tables.append({"name": asset.name, "columns": columns})
+
+    if not tables:
+        click.echo(
+            "No lakehouse-backed datasets with a schema found. "
+            "Run `migrate` (or `migrate --agents dataset_migrator`) first.",
+            err=True,
+        )
+        sys.exit(1)
+
+    name = model_name or f"{project}_Model"
+    lakehouse_id = getattr(orch.config.fabric, "lakehouse_id", orch.config.fabric.workspace_id)
+    tmdl_files = generate_semantic_model_tmdl(
+        name, tables,
+        workspace_id=orch.config.fabric.workspace_id,
+        lakehouse_id=lakehouse_id,
+    )
+
+    result = asyncio.run(fabric_client.create_semantic_model(name, tmdl_files))
+    click.echo(f"Semantic model published: {name} ({len(tables)} tables)")
+    click.echo(_format_output(result, "json"))
 
 
 if __name__ == "__main__":

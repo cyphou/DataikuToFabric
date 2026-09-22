@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `migration.migrate_data` config flag (also `migrate --with-data`) wires the previously-dead `run_data_migration()` pipeline into `DatasetMigrationAgent` — `migrate` can now actually export/upload/load data, not just generate DDL, with one dataset's data-migration failure isolated from the rest via a review flag
+- `publish-powerbi` CLI command — generates a minimal DirectLake Power BI/Fabric SemanticModel (TMDL: `database.tmdl`/`model.tmdl`/`expressions.tmdl`/`tables/*.tmdl`) over already-migrated lakehouse datasets and publishes it via a new `FabricClient.create_semantic_model()`. Reuses the DirectLake TMDL structure pattern from the sibling TableauToPowerBI project (reimplemented, since that generator is coupled to Tableau-specific extraction internals)
+
 ### Fixed
 - `run_data_migration()` no longer leaks the local exported staging file to disk forever after a successful upload — it's now deleted once the data has reached its destination in OneLake, and only kept when a step fails (for debugging/retry)
 - `run_data_migration()` now catches exceptions from any pipeline step and returns `status: "failed"` instead of propagating a raw exception, so migrating many datasets can isolate one failure from the rest

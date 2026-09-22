@@ -91,6 +91,18 @@ dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --dry-run
 
 # Filter to specific assets
 dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --asset-ids "recipe_compute_customer_360,dataset_CRM_CUSTOMERS"
+
+# Also move the actual data (export → upload → load → verify), not just DDL
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --with-data
+```
+
+#### 📊 Publish to Power BI / Fabric
+
+```bash
+# Generate + publish a DirectLake semantic model over migrated lakehouse tables
+# (run `migrate --with-data` or at least the dataset_migrator agent first)
+dataiku-to-fabric publish-powerbi --project MY_PROJECT
+dataiku-to-fabric publish-powerbi --project MY_PROJECT --model-name Sales_Model
 ```
 
 #### ⚡ Quality & analysis
@@ -354,6 +366,7 @@ Each agent runs in **parallel waves** (independent agents execute concurrently).
 | `lineage` | Lineage graph & impact analysis |
 | `serve` | Start REST API server |
 | `merge` | Multi-project merge |
+| `publish-powerbi` | Publish a DirectLake Power BI/Fabric semantic model over migrated tables |
 | `config validate` | Validate configuration file |
 | `status` | Show migration status |
 | `interactive` | Launch guided migration wizard |

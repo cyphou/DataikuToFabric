@@ -177,6 +177,29 @@ class FabricClient:
         }
         return await self.create_item(name, "DataPipeline", definition)
 
+    # ── SemanticModel APIs ────────────────────────────────────
+
+    async def create_semantic_model(self, name: str, tmdl_files: dict[str, str]) -> dict:
+        """Create a Fabric SemanticModel item from TMDL file contents.
+
+        Args:
+            name: Display name of the semantic model item.
+            tmdl_files: Mapping of relative path (e.g. ``definition/model.tmdl``)
+                to file content, as produced by
+                ``src.generators.powerbi_semantic_model.generate_semantic_model_tmdl``.
+        """
+        definition = {
+            "parts": [
+                {
+                    "path": path,
+                    "payload": base64.b64encode(content.encode("utf-8")).decode(),
+                    "payloadType": "InlineBase64",
+                }
+                for path, content in tmdl_files.items()
+            ]
+        }
+        return await self.create_item(name, "SemanticModel", definition)
+
     # ── SQL APIs ──────────────────────────────────────────────
 
     async def execute_sql(self, item_id: str, sql: str) -> dict:
