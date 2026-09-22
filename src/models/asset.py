@@ -22,6 +22,8 @@ class AssetType(str, Enum):
     SCENARIO = "scenario"
     SAVED_MODEL = "saved_model"
     DASHBOARD = "dashboard"
+    WEBAPP = "webapp"
+    STREAMING_ENDPOINT = "streaming_endpoint"
 
 
 class MigrationState(str, Enum):

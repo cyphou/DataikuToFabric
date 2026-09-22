@@ -313,6 +313,36 @@ class TestListDashboards:
             assert result == []
 
 
+class TestListWebapps:
+    @pytest.mark.asyncio
+    async def test_list_webapps_calls_correct_endpoint(self, client):
+        mock_data = [{"id": "wa1", "name": "MyApp", "type": "SHINY"}]
+        with patch.object(client, "_paginated_list", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.list_webapps("PROJ")
+            m.assert_called_once_with("/projects/PROJ/webapps/")
+            assert result == mock_data
+
+
+class TestListStreamingEndpoints:
+    @pytest.mark.asyncio
+    async def test_list_streaming_endpoints_calls_correct_endpoint(self, client):
+        mock_data = [{"id": "kafka1", "type": "kafka"}]
+        with patch.object(client, "_paginated_list", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.list_streaming_endpoints("PROJ")
+            m.assert_called_once_with("/projects/PROJ/streamingendpoints/")
+            assert result == mock_data
+
+
+class TestGetProjectVariables:
+    @pytest.mark.asyncio
+    async def test_get_project_variables_calls_correct_endpoint(self, client):
+        mock_data = {"standard": {"env": "prod"}, "local": {}}
+        with patch.object(client, "_request", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.get_project_variables("PROJ")
+            m.assert_called_once_with("GET", "/projects/PROJ/variables")
+            assert result == mock_data
+
+
 class _FakeStreamResponse:
     """Minimal stand-in for an httpx streaming response."""
 

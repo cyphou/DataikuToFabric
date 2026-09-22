@@ -162,16 +162,26 @@ class DiscoveryAgent(BaseAgent):
                     f"Connections not discovered (requires admin API key): {e}"
                 )
 
-            # Discover flow — non-critical, degrade gracefully.
+            # Discover flow — non-critical, degrade gracefully. Project
+            # variables (used for ${var} substitution in recipes/scenarios)
+            # are attached here so downstream translators/reports can surface
+            # unresolved references instead of silently ignoring them.
             try:
                 flow = await client.get_flow(project_key)
+                variables: dict = {}
+                try:
+                    variables = await client.get_project_variables(project_key)
+                except Exception as e:
+                    logger.warning("project_variables_discovery_failed", error=str(e))
+                    review_flags.append(f"Project variables not discovered: {e}")
+
                 asset = Asset(
                     id=f"flow_{project_key}",
                     type=AssetType.FLOW,
                     name=f"{project_key}_flow",
                     source_project=project_key,
                     state=MigrationState.DISCOVERED,
-                    metadata=flow,
+                    metadata={**flow, "variables": variables},
                 )
                 registry.add_asset(asset)
                 processed += 1
@@ -232,6 +242,45 @@ class DiscoveryAgent(BaseAgent):
             except Exception as e:
                 logger.warning("dashboards_discovery_failed", error=str(e))
                 review_flags.append(f"Dashboards not discovered: {e}")
+
+            # Discover webapps — Dataiku webapps (Shiny/Bokeh/Standard) have
+            # no Fabric equivalent; catalog them but flag for manual review.
+            try:
+                webapps = await client.list_webapps(project_key)
+                for webapp in webapps:
+                    asset = Asset(
+                        id=f"webapp_{webapp.get('id', webapp.get('name', ''))}",
+                        type=AssetType.WEBAPP,
+                        name=webapp.get("name", webapp.get("id", "")),
+                        source_project=project_key,
+                        state=MigrationState.DISCOVERED,
+                        metadata=webapp,
+                        review_flags=["No direct Fabric equivalent — requires manual re-implementation"],
+                    )
+                    registry.add_asset(asset)
+                    processed += 1
+            except Exception as e:
+                logger.warning("webapps_discovery_failed", error=str(e))
+                review_flags.append(f"Webapps not discovered: {e}")
+
+            # Discover streaming endpoints (Kafka/etc.) — flagged the same way.
+            try:
+                endpoints = await client.list_streaming_endpoints(project_key)
+                for endpoint in endpoints:
+                    asset = Asset(
+                        id=f"streaming_{endpoint.get('id', '')}",
+                        type=AssetType.STREAMING_ENDPOINT,
+                        name=endpoint.get("id", ""),
+                        source_project=project_key,
+                        state=MigrationState.DISCOVERED,
+                        metadata=endpoint,
+                        review_flags=["No direct Fabric equivalent — requires manual re-implementation"],
+                    )
+                    registry.add_asset(asset)
+                    processed += 1
+            except Exception as e:
+                logger.warning("streaming_endpoints_discovery_failed", error=str(e))
+                review_flags.append(f"Streaming endpoints not discovered: {e}")
 
             registry.save()
             logger.info("discovery_complete", project=project_key, assets=processed)

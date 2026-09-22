@@ -60,6 +60,10 @@ def _make_mock_client(fixtures: dict) -> AsyncMock:
     client.list_saved_models.return_value = fixtures["saved_models"]
     client.list_dashboards.return_value = fixtures["dashboards"]
 
+    client.list_webapps.return_value = fixtures.get("webapps", [])
+    client.list_streaming_endpoints.return_value = fixtures.get("streaming_endpoints", [])
+    client.get_project_variables.return_value = fixtures.get("variables", {"standard": {}, "local": {}})
+
     return client
 
 
@@ -186,6 +190,103 @@ class TestDiscoveryConnectionsGracefulDegradation:
         assert ctx.registry.get_by_type(AssetType.RECIPE_SQL)
         assert ctx.registry.get_by_type(AssetType.DATASET)
         assert ctx.registry.get_by_type(AssetType.SCENARIO)
+
+
+class TestDiscoveryWebappsStreamingVariables:
+    """Webapps and streaming endpoints have no direct Fabric equivalent —
+
+    they must be cataloged with a review flag rather than silently dropped.
+    Project variables must be attached to the flow asset for downstream use.
+    """
+
+    @pytest.mark.asyncio
+    async def test_webapps_discovered_and_flagged_for_review(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["webapps"] = [{"id": "wa1", "name": "MyDashboardApp", "type": "SHINY"}]
+        ctx = _make_context(tmp_path)
+        ctx.connectors["dataiku"] = _make_mock_client(fixtures)
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        webapp_assets = ctx.registry.get_by_type(AssetType.WEBAPP)
+        assert len(webapp_assets) == 1
+        assert webapp_assets[0].name == "MyDashboardApp"
+        assert any("manual re-implementation" in flag for flag in webapp_assets[0].review_flags)
+
+    @pytest.mark.asyncio
+    async def test_streaming_endpoints_discovered_and_flagged_for_review(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["streaming_endpoints"] = [{"id": "kafka_topic_1", "type": "kafka"}]
+        ctx = _make_context(tmp_path)
+        ctx.connectors["dataiku"] = _make_mock_client(fixtures)
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        endpoint_assets = ctx.registry.get_by_type(AssetType.STREAMING_ENDPOINT)
+        assert len(endpoint_assets) == 1
+        assert endpoint_assets[0].name == "kafka_topic_1"
+        assert any("manual re-implementation" in flag for flag in endpoint_assets[0].review_flags)
+
+    @pytest.mark.asyncio
+    async def test_webapps_failure_does_not_fail_discovery(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_webapps = AsyncMock(side_effect=RuntimeError("boom"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert any("Webapps not discovered" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_streaming_endpoints_failure_does_not_fail_discovery(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_streaming_endpoints = AsyncMock(side_effect=RuntimeError("boom"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert any("Streaming endpoints not discovered" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_project_variables_attached_to_flow_asset(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["variables"] = {"standard": {"env": "prod"}, "local": {}}
+        ctx = _make_context(tmp_path)
+        ctx.connectors["dataiku"] = _make_mock_client(fixtures)
+
+        agent = DiscoveryAgent()
+        await agent.execute(ctx)
+
+        flow_assets = ctx.registry.get_by_type(AssetType.FLOW)
+        assert len(flow_assets) == 1
+        assert flow_assets[0].metadata["variables"]["standard"]["env"] == "prod"
+
+    @pytest.mark.asyncio
+    async def test_project_variables_failure_does_not_fail_flow_discovery(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.get_project_variables = AsyncMock(side_effect=RuntimeError("boom"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert ctx.registry.get_by_type(AssetType.FLOW)
+        assert any("Project variables not discovered" in flag for flag in result.review_flags)
 
 
 class TestDiscoveryPartialFailureResilience:

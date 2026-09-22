@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Full Dataiku REST API coverage audit against the official spec (auth, API key permission model, and the exhaustive `dss/api/*` endpoint catalog). Closed the highest-value gaps found:
+	- New `AssetType.WEBAPP` / `AssetType.STREAMING_ENDPOINT` — Dataiku webapps and streaming endpoints (Kafka/etc.) are now discovered via new `DataikuClient.list_webapps()` / `list_streaming_endpoints()` methods instead of being silently invisible to the migration; both have no direct Fabric equivalent so each discovered asset carries an explicit `review_flags` entry requiring manual re-implementation
+	- `DataikuClient.get_project_variables()` fetches project-level `standard`/`local` variables (used for `${var}` substitution throughout recipes/scenarios/SQL) and attaches them to the `FLOW` asset's metadata so translators/reports can surface unresolved variable references instead of them being invisible
+	- Discovery failures for webapps, streaming endpoints, and project variables each degrade gracefully with a review flag, following the same non-fatal pattern already used for connections/saved models/dashboards
+	- Documented, deliberately out-of-scope for now (lower priority, no code changes): Wiki articles, Discussions, Data Quality rules, code environments/package lists, Jupyter notebooks (ad-hoc, distinct from recipes), dashboard insights (chart-level detail within a dashboard), and detailed saved-model version/framework metadata
 - `migration.migrate_data` config flag (also `migrate --with-data`) wires the previously-dead `run_data_migration()` pipeline into `DatasetMigrationAgent` — `migrate` can now actually export/upload/load data, not just generate DDL, with one dataset's data-migration failure isolated from the rest via a review flag
 - `publish-powerbi` CLI command — generates a minimal DirectLake Power BI/Fabric SemanticModel (TMDL: `database.tmdl`/`model.tmdl`/`expressions.tmdl`/`tables/*.tmdl`) over already-migrated lakehouse datasets and publishes it via a new `FabricClient.create_semantic_model()`. Reuses the DirectLake TMDL structure pattern from the sibling TableauToPowerBI project (reimplemented, since that generator is coupled to Tableau-specific extraction internals)
 

@@ -265,6 +265,21 @@ class DataikuClient:
                 return []
             raise
 
+    async def list_webapps(self, project_key: str) -> list[dict]:
+        """List all webapps in a project (Shiny/Bokeh/Standard — no Fabric equivalent)."""
+        return await self._paginated_list(f"/projects/{project_key}/webapps/")
+
+    async def list_streaming_endpoints(self, project_key: str) -> list[dict]:
+        """List all streaming endpoints (Kafka/etc.) in a project."""
+        return await self._paginated_list(f"/projects/{project_key}/streamingendpoints/")
+
+    async def get_project_variables(self, project_key: str) -> dict:
+        """Get project-level variables (used for ``${var}`` substitution in
+
+        recipes/scenarios/SQL). Returns ``{"standard": {...}, "local": {...}}``.
+        """
+        return await self._request("GET", f"/projects/{project_key}/variables")
+
     # ── Admin APIs ────────────────────────────────────────────
 
     async def list_connections(self) -> list[dict]:
