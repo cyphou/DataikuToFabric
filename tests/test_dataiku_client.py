@@ -221,6 +221,27 @@ class TestDataQuality:
             assert result == mock_data
 
 
+class TestSavedModelVersions:
+    @pytest.mark.asyncio
+    async def test_list_saved_model_versions_calls_correct_endpoint(self, client):
+        mock_data = [{"id": "v1", "active": True}]
+        with patch.object(client, "_paginated_list", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.list_saved_model_versions("PROJ", "model1")
+            m.assert_called_once_with("/projects/PROJ/savedmodels/model1/versions")
+            assert result == mock_data
+
+    @pytest.mark.asyncio
+    async def test_get_saved_model_version_details_calls_correct_endpoint(self, client):
+        mock_data = {"pythonCodeEnvName": "ml-env"}
+        with patch.object(client, "_request", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.get_saved_model_version_details("PROJ", "model1", "v1")
+            m.assert_called_once_with(
+                "GET",
+                "/projects/PROJ/savedmodels/model1/versions/v1/details",
+            )
+            assert result == mock_data
+
+
 class TestGetRecipe:
     @pytest.mark.asyncio
     async def test_get_recipe_returns_detail(self, client):

@@ -58,6 +58,19 @@ def _make_mock_client(fixtures: dict) -> AsyncMock:
     client.get_flow.return_value = fixtures["flow"]
     client.list_scenarios.return_value = fixtures["scenarios"]
     client.list_saved_models.return_value = fixtures["saved_models"]
+
+    async def _list_saved_model_versions(project_key: str, model_id: str) -> list[dict]:
+        return fixtures.get("saved_model_versions", {}).get(model_id, [])
+
+    async def _get_saved_model_version_details(
+        project_key: str,
+        model_id: str,
+        version_id: str,
+    ) -> dict:
+        return fixtures.get("saved_model_version_details", {}).get(version_id, {})
+
+    client.list_saved_model_versions = AsyncMock(side_effect=_list_saved_model_versions)
+    client.get_saved_model_version_details = AsyncMock(side_effect=_get_saved_model_version_details)
     client.list_dashboards.return_value = fixtures["dashboards"]
 
     client.list_webapps.return_value = fixtures.get("webapps", [])
@@ -144,6 +157,42 @@ class TestDiscoveryAgentBasic:
 
         model_assets = ctx.registry.get_by_type(AssetType.SAVED_MODEL)
         assert len(model_assets) == 2
+
+    @pytest.mark.asyncio
+    async def test_saved_models_include_versions_and_details(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["saved_model_versions"] = {
+            "model_churn": [{"id": "v1", "active": True, "trainDate": 123}]
+        }
+        fixtures["saved_model_version_details"] = {
+            "v1": {"pythonCodeEnvName": "ml-env", "predictionType": "BINARY_CLASSIFICATION"}
+        }
+        ctx = _make_context(tmp_path)
+        ctx.connectors["dataiku"] = _make_mock_client(fixtures)
+
+        await DiscoveryAgent().execute(ctx)
+
+        model = next(
+            asset for asset in ctx.registry.get_by_type(AssetType.SAVED_MODEL)
+            if asset.name == "churn_predictor"
+        )
+        assert model.metadata["versions"] == [{"id": "v1", "active": True, "trainDate": 123}]
+        assert model.metadata["version_details"]["v1"]["pythonCodeEnvName"] == "ml-env"
+
+    @pytest.mark.asyncio
+    async def test_saved_model_version_failure_keeps_model(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["saved_model_versions"] = {"model_churn": [{"id": "v1"}]}
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.get_saved_model_version_details = AsyncMock(side_effect=RuntimeError("details boom"))
+        ctx.connectors["dataiku"] = client
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        model_assets = ctx.registry.get_by_type(AssetType.SAVED_MODEL)
+        assert len(model_assets) == 2
+        assert any("version 'v1' details not discovered" in flag for flag in result.review_flags)
 
     @pytest.mark.asyncio
     async def test_discovers_dashboards(self, tmp_path):

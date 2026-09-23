@@ -266,6 +266,24 @@ class DataikuClient:
         """List all saved models in a project."""
         return await self._paginated_list(f"/projects/{project_key}/savedmodels/")
 
+    async def list_saved_model_versions(self, project_key: str, model_id: str) -> list[dict]:
+        """List versions of a saved model."""
+        return await self._paginated_list(
+            f"/projects/{project_key}/savedmodels/{model_id}/versions"
+        )
+
+    async def get_saved_model_version_details(
+        self,
+        project_key: str,
+        model_id: str,
+        version_id: str,
+    ) -> dict:
+        """Get detailed metadata for one saved-model version."""
+        return await self._request(
+            "GET",
+            f"/projects/{project_key}/savedmodels/{model_id}/versions/{version_id}/details",
+        )
+
     async def list_dashboards(self, project_key: str) -> list[dict]:
         """List all dashboards in a project (if API supports it)."""
         try:

@@ -239,13 +239,50 @@ class DiscoveryAgent(BaseAgent):
             try:
                 models = await client.list_saved_models(project_key)
                 for model in models:
+                    model_id = model.get("id", model.get("name", ""))
+                    versions: list[dict] = []
+                    version_details: dict[str, dict] = {}
+                    try:
+                        versions = await client.list_saved_model_versions(project_key, model_id)
+                        for version in versions:
+                            version_id = version.get("id", "")
+                            if not version_id:
+                                continue
+                            try:
+                                version_details[version_id] = await client.get_saved_model_version_details(
+                                    project_key,
+                                    model_id,
+                                    version_id,
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    "saved_model_version_details_discovery_failed",
+                                    model=model_id,
+                                    version=version_id,
+                                    error=str(e),
+                                )
+                                review_flags.append(
+                                    f"Saved model '{model_id}' version '{version_id}' details not discovered: {e}"
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            "saved_model_versions_discovery_failed",
+                            model=model_id,
+                            error=str(e),
+                        )
+                        review_flags.append(f"Saved model '{model_id}' versions not discovered: {e}")
+
                     asset = Asset(
-                        id=f"model_{model.get('id', model.get('name', ''))}",
+                        id=f"model_{model_id}",
                         type=AssetType.SAVED_MODEL,
-                        name=model.get("name", model.get("id", "")),
+                        name=model.get("name", model_id),
                         source_project=project_key,
                         state=MigrationState.DISCOVERED,
-                        metadata=model,
+                        metadata={
+                            **model,
+                            "versions": versions,
+                            "version_details": version_details,
+                        },
                     )
                     registry.add_asset(asset)
                     processed += 1
