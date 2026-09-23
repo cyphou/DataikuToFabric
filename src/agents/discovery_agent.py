@@ -348,6 +348,35 @@ class DiscoveryAgent(BaseAgent):
                 logger.warning("api_services_discovery_failed", error=str(e))
                 review_flags.append(f"API services not discovered: {e}")
 
+            # Discover the project library. Its external-libraries.json file
+            # can contain dependencies needed to reproduce Python execution.
+            try:
+                library_contents = await client.list_project_library_contents(project_key)
+                library_metadata: dict = {}
+                try:
+                    library_metadata = await client.get_project_library_file(
+                        project_key,
+                        "external-libraries.json",
+                    )
+                except Exception as e:
+                    logger.warning("project_library_metadata_discovery_failed", error=str(e))
+                    review_flags.append(f"Project library metadata not discovered: {e}")
+
+                asset = Asset(
+                    id=f"project_library_{project_key}",
+                    type=AssetType.PROJECT_LIBRARY,
+                    name=f"{project_key}_library",
+                    source_project=project_key,
+                    state=MigrationState.DISCOVERED,
+                    metadata={"contents": library_contents, "external_libraries": library_metadata},
+                    review_flags=["Project library dependencies require manual review for Fabric/Python migration"],
+                )
+                registry.add_asset(asset)
+                processed += 1
+            except Exception as e:
+                logger.warning("project_library_discovery_failed", error=str(e))
+                review_flags.append(f"Project library not discovered: {e}")
+
             registry.save()
             logger.info("discovery_complete", project=project_key, assets=processed)
 

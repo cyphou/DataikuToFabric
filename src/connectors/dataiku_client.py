@@ -293,6 +293,14 @@ class DataikuClient:
         """List generated packages for a Dataiku API service."""
         return await self._paginated_list(f"/projects/{project_key}/apiservices/{service_id}/packages/")
 
+    async def list_project_library_contents(self, project_key: str) -> list[dict]:
+        """List files in a project's library."""
+        return await self._request("GET", f"/projects/{project_key}/libraries/contents/")
+
+    async def get_project_library_file(self, project_key: str, path: str) -> Any:
+        """Retrieve a JSON project-library file, such as external-libraries.json."""
+        return await self._request("GET", f"/projects/{project_key}/libraries/contents/{path}")
+
     async def get_project_variables(self, project_key: str) -> dict:
         """Get project-level variables (used for ``${var}`` substitution in
 

@@ -69,6 +69,8 @@ def _make_mock_client(fixtures: dict) -> AsyncMock:
         return fixtures.get("api_service_packages", {}).get(service_id, [])
 
     client.list_api_service_packages = AsyncMock(side_effect=_list_api_service_packages)
+    client.list_project_library_contents.return_value = fixtures.get("library_contents", [])
+    client.get_project_library_file.return_value = fixtures.get("external_libraries", {})
 
     async def _get_jupyter_notebook(project_key: str, notebook_name: str) -> dict:
         return fixtures.get("jupyter_notebook_payloads", {}).get(notebook_name, {})
@@ -415,6 +417,53 @@ class TestDiscoveryApiServices:
 
         assert result.status.value == "completed"
         assert any("API services not discovered" in flag for flag in result.review_flags)
+
+
+class TestDiscoveryProjectLibrary:
+    @pytest.mark.asyncio
+    async def test_project_library_discovered_with_dependency_metadata(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["library_contents"] = [{"path": "external-libraries.json", "mimeType": "application/json"}]
+        fixtures["external_libraries"] = {"python": {"packages": ["requests==2.32.0"]}}
+        ctx = _make_context(tmp_path)
+        ctx.connectors["dataiku"] = _make_mock_client(fixtures)
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        assert result.status.value == "completed"
+        assets = ctx.registry.get_by_type(AssetType.PROJECT_LIBRARY)
+        assert len(assets) == 1
+        assert assets[0].metadata["external_libraries"]["python"]["packages"] == ["requests==2.32.0"]
+        assert any("dependencies require manual review" in flag for flag in assets[0].review_flags)
+
+    @pytest.mark.asyncio
+    async def test_project_library_metadata_failure_keeps_library_asset(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.get_project_library_file = AsyncMock(side_effect=RuntimeError("metadata boom"))
+        ctx.connectors["dataiku"] = client
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        assert result.status.value == "completed"
+        assets = ctx.registry.get_by_type(AssetType.PROJECT_LIBRARY)
+        assert len(assets) == 1
+        assert assets[0].metadata["external_libraries"] == {}
+        assert any("Project library metadata not discovered" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_project_library_failure_does_not_fail_discovery(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_project_library_contents = AsyncMock(side_effect=RuntimeError("library boom"))
+        ctx.connectors["dataiku"] = client
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        assert result.status.value == "completed"
+        assert any("Project library not discovered" in flag for flag in result.review_flags)
 
 
 class TestDiscoveryPartialFailureResilience:

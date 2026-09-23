@@ -386,6 +386,27 @@ class TestApiServices:
             assert result == mock_data
 
 
+class TestProjectLibrary:
+    @pytest.mark.asyncio
+    async def test_list_project_library_contents_calls_correct_endpoint(self, client):
+        mock_data = [{"path": "external-libraries.json"}]
+        with patch.object(client, "_request", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.list_project_library_contents("PROJ")
+            m.assert_called_once_with("GET", "/projects/PROJ/libraries/contents/")
+            assert result == mock_data
+
+    @pytest.mark.asyncio
+    async def test_get_project_library_file_calls_correct_endpoint(self, client):
+        mock_data = {"python": {"packages": ["requests"]}}
+        with patch.object(client, "_request", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.get_project_library_file("PROJ", "external-libraries.json")
+            m.assert_called_once_with(
+                "GET",
+                "/projects/PROJ/libraries/contents/external-libraries.json",
+            )
+            assert result == mock_data
+
+
 class _FakeStreamResponse:
     """Minimal stand-in for an httpx streaming response."""
 
