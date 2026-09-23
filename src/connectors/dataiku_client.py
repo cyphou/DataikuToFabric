@@ -239,6 +239,17 @@ class DataikuClient:
         """Get a dataset's schema definition."""
         return await self._request("GET", f"/projects/{project_key}/datasets/{dataset_name}/schema")
 
+    async def get_project_data_quality_status(self, project_key: str) -> dict:
+        """Get the latest Data Quality status for project datasets."""
+        return await self._request("GET", f"/projects/{project_key}/data-quality/status")
+
+    async def get_dataset_data_quality_rules(self, project_key: str, dataset_name: str) -> dict:
+        """Get the Data Quality rule configuration for a dataset."""
+        return await self._request(
+            "GET",
+            f"/projects/{project_key}/datasets/{dataset_name}/data-quality/rules",
+        )
+
     async def list_managed_folders(self, project_key: str) -> list[dict]:
         """List all managed folders in a project."""
         return await self._paginated_list(f"/projects/{project_key}/managedfolders/")

@@ -107,6 +107,13 @@ class DiscoveryAgent(BaseAgent):
             # the dataset listing (e.g. schema not yet computed) — skip that
             # one dataset rather than losing everything discovered so far.
             datasets = await client.list_datasets(project_key)
+            data_quality_status: dict = {}
+            try:
+                data_quality_status = await client.get_project_data_quality_status(project_key)
+            except Exception as e:
+                logger.warning("project_data_quality_status_discovery_failed", error=str(e))
+                review_flags.append(f"Project Data Quality status not discovered: {e}")
+
             for ds in datasets:
                 try:
                     schema = await client.get_dataset_schema(project_key, ds["name"])
@@ -115,13 +122,34 @@ class DiscoveryAgent(BaseAgent):
                     review_flags.append(f"Dataset '{ds.get('name')}' schema not discovered: {e}")
                     continue
 
+                quality_rules: dict = {}
+                try:
+                    quality_rules = await client.get_dataset_data_quality_rules(
+                        project_key,
+                        ds["name"],
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "dataset_data_quality_rules_discovery_failed",
+                        dataset=ds.get("name"),
+                        error=str(e),
+                    )
+                    review_flags.append(f"Dataset '{ds.get('name')}' Data Quality rules not discovered: {e}")
+
                 asset = Asset(
                     id=f"dataset_{ds['name']}",
                     type=AssetType.DATASET,
                     name=ds["name"],
                     source_project=project_key,
                     state=MigrationState.DISCOVERED,
-                    metadata={**ds, "schema": schema},
+                    metadata={
+                        **ds,
+                        "schema": schema,
+                        "data_quality": {
+                            "status": data_quality_status.get(ds["name"]),
+                            "rules": quality_rules,
+                        },
+                    },
                 )
                 registry.add_asset(asset)
                 processed += 1

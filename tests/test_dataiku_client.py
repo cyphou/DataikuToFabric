@@ -200,6 +200,27 @@ class TestListDatasets:
             assert len(result) == 3
 
 
+class TestDataQuality:
+    @pytest.mark.asyncio
+    async def test_get_project_data_quality_status_calls_correct_endpoint(self, client):
+        mock_data = {"orders": "OK"}
+        with patch.object(client, "_request", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.get_project_data_quality_status("PROJ")
+            m.assert_called_once_with("GET", "/projects/PROJ/data-quality/status")
+            assert result == mock_data
+
+    @pytest.mark.asyncio
+    async def test_get_dataset_data_quality_rules_calls_correct_endpoint(self, client):
+        mock_data = {"monitor": True, "checks": []}
+        with patch.object(client, "_request", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.get_dataset_data_quality_rules("PROJ", "orders")
+            m.assert_called_once_with(
+                "GET",
+                "/projects/PROJ/datasets/orders/data-quality/rules",
+            )
+            assert result == mock_data
+
+
 class TestGetRecipe:
     @pytest.mark.asyncio
     async def test_get_recipe_returns_detail(self, client):

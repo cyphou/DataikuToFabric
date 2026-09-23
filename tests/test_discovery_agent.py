@@ -71,6 +71,8 @@ def _make_mock_client(fixtures: dict) -> AsyncMock:
     client.list_api_service_packages = AsyncMock(side_effect=_list_api_service_packages)
     client.list_project_library_contents.return_value = fixtures.get("library_contents", [])
     client.get_project_library_file.return_value = fixtures.get("external_libraries", {})
+    client.get_project_data_quality_status.return_value = fixtures.get("data_quality_status", {})
+    client.get_dataset_data_quality_rules.return_value = fixtures.get("data_quality_rules", {})
 
     async def _get_jupyter_notebook(project_key: str, notebook_name: str) -> dict:
         return fixtures.get("jupyter_notebook_payloads", {}).get(notebook_name, {})
@@ -464,6 +466,55 @@ class TestDiscoveryProjectLibrary:
 
         assert result.status.value == "completed"
         assert any("Project library not discovered" in flag for flag in result.review_flags)
+
+
+class TestDiscoveryDataQuality:
+    @pytest.mark.asyncio
+    async def test_dataset_includes_data_quality_status_and_rules(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["data_quality_status"] = {"raw_orders": "OK"}
+        fixtures["data_quality_rules"] = {"monitor": True, "checks": [{"id": "r1", "enabled": True}]}
+        ctx = _make_context(tmp_path)
+        ctx.connectors["dataiku"] = _make_mock_client(fixtures)
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        assert result.status.value == "completed"
+        orders = next(asset for asset in ctx.registry.get_by_type(AssetType.DATASET) if asset.name == "raw_orders")
+        assert orders.metadata["data_quality"] == {
+            "status": "OK",
+            "rules": {"monitor": True, "checks": [{"id": "r1", "enabled": True}]},
+        }
+
+    @pytest.mark.asyncio
+    async def test_data_quality_status_failure_does_not_drop_datasets(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.get_project_data_quality_status = AsyncMock(side_effect=RuntimeError("status boom"))
+        ctx.connectors["dataiku"] = client
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        assert result.status.value == "completed"
+        assert ctx.registry.get_by_type(AssetType.DATASET)
+        assert any("Project Data Quality status not discovered" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_data_quality_rules_failure_does_not_drop_dataset(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.get_dataset_data_quality_rules = AsyncMock(side_effect=RuntimeError("rules boom"))
+        ctx.connectors["dataiku"] = client
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        assert result.status.value == "completed"
+        dataset_assets = ctx.registry.get_by_type(AssetType.DATASET)
+        assert dataset_assets
+        assert dataset_assets[0].metadata["data_quality"]["rules"] == {}
+        assert any("Data Quality rules not discovered" in flag for flag in result.review_flags)
 
 
 class TestDiscoveryPartialFailureResilience:
