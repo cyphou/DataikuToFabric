@@ -63,6 +63,12 @@ def _make_mock_client(fixtures: dict) -> AsyncMock:
     client.list_webapps.return_value = fixtures.get("webapps", [])
     client.list_streaming_endpoints.return_value = fixtures.get("streaming_endpoints", [])
     client.list_jupyter_notebooks.return_value = fixtures.get("jupyter_notebooks", [])
+    client.list_api_services.return_value = fixtures.get("api_services", [])
+
+    async def _list_api_service_packages(project_key: str, service_id: str) -> list[dict]:
+        return fixtures.get("api_service_packages", {}).get(service_id, [])
+
+    client.list_api_service_packages = AsyncMock(side_effect=_list_api_service_packages)
 
     async def _get_jupyter_notebook(project_key: str, notebook_name: str) -> dict:
         return fixtures.get("jupyter_notebook_payloads", {}).get(notebook_name, {})
@@ -351,6 +357,64 @@ class TestDiscoveryJupyterNotebooks:
 
         assert result.status.value == "completed"
         assert any("Jupyter notebooks not discovered" in flag for flag in result.review_flags)
+
+
+class TestDiscoveryApiServices:
+    """API services expose Dataiku prediction/custom endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_api_services_discovered_with_packages_and_flag(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["api_services"] = [
+            {"id": "customer-scoring", "publicAccess": "true", "endpoints": [{"id": "score", "type": "CUSTOM_PREDICTION"}]}
+        ]
+        fixtures["api_service_packages"] = {
+            "customer-scoring": [{"id": "v1", "createdOn": 123}]
+        }
+        ctx = _make_context(tmp_path)
+        ctx.connectors["dataiku"] = _make_mock_client(fixtures)
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        service_assets = ctx.registry.get_by_type(AssetType.API_SERVICE)
+        assert len(service_assets) == 1
+        assert service_assets[0].name == "customer-scoring"
+        assert service_assets[0].metadata["packages"][0]["id"] == "v1"
+        assert any("manual Fabric/Azure endpoint migration" in flag for flag in service_assets[0].review_flags)
+
+    @pytest.mark.asyncio
+    async def test_api_service_package_failure_does_not_drop_service(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["api_services"] = [{"id": "customer-scoring", "endpoints": []}]
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_api_service_packages = AsyncMock(side_effect=RuntimeError("package boom"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        service_assets = ctx.registry.get_by_type(AssetType.API_SERVICE)
+        assert len(service_assets) == 1
+        assert service_assets[0].metadata["packages"] == []
+        assert any("packages not discovered" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_api_services_failure_does_not_fail_discovery(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_api_services = AsyncMock(side_effect=RuntimeError("boom"))
+        ctx.connectors["dataiku"] = client
+
+        agent = DiscoveryAgent()
+        result = await agent.execute(ctx)
+
+        assert result.status.value == "completed"
+        assert any("API services not discovered" in flag for flag in result.review_flags)
 
 
 class TestDiscoveryPartialFailureResilience:

@@ -21,6 +21,7 @@ from src.agents.python_migration_agent import PythonMigrationAgent
 from src.agents.sql_migration_agent import SQLMigrationAgent
 from src.agents.validation_agent import ValidationAgent
 from src.agents.visual_recipe_agent import VisualRecipeAgent
+from src.core.logger import setup_logging
 from src.core.orchestrator import Orchestrator
 from src.core.registry import AssetRegistry
 from src.models.asset import Asset, AssetType, MigrationState
@@ -259,6 +260,7 @@ class PerfDiscoveryAgent(BaseAgent):
 
 class TestPerformance:
     def _build_orchestrator(self, tmp_path, assets):
+        setup_logging(level="ERROR", log_format="json")
         config = StubAppConfig()
         config.migration.output_dir = str(tmp_path)
         registry = AssetRegistry(project_key="PERF_TEST", registry_path=tmp_path / "registry.json")

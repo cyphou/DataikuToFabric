@@ -24,6 +24,9 @@ DIALECT_MAP: dict[str, str] = {
     "impala": "hive",
     "sqlserver": "tsql",
     "mssql": "tsql",
+    "sql": "tsql",
+    "sql_query": "tsql",
+    "sql_script": "tsql",
 }
 
 

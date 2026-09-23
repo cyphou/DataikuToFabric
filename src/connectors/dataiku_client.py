@@ -285,6 +285,14 @@ class DataikuClient:
             f"/projects/{project_key}/jupyter-notebooks/{notebook_name}",
         )
 
+    async def list_api_services(self, project_key: str) -> list[dict]:
+        """List API services in a project (prediction/custom endpoints)."""
+        return await self._paginated_list(f"/projects/{project_key}/apiservices/")
+
+    async def list_api_service_packages(self, project_key: str, service_id: str) -> list[dict]:
+        """List generated packages for a Dataiku API service."""
+        return await self._paginated_list(f"/projects/{project_key}/apiservices/{service_id}/packages/")
+
     async def get_project_variables(self, project_key: str) -> dict:
         """Get project-level variables (used for ``${var}`` substitution in
 

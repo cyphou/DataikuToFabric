@@ -315,6 +315,39 @@ class DiscoveryAgent(BaseAgent):
                 logger.warning("jupyter_notebooks_discovery_failed", error=str(e))
                 review_flags.append(f"Jupyter notebooks not discovered: {e}")
 
+            # Discover API services — these are deployable Dataiku prediction
+            # or custom endpoints. Fabric/Power BI has no direct item type for
+            # them, but losing them would hide production serving dependencies.
+            try:
+                api_services = await client.list_api_services(project_key)
+                for service in api_services:
+                    service_id = service.get("id", "")
+                    packages: list[dict] = []
+                    try:
+                        packages = await client.list_api_service_packages(project_key, service_id)
+                    except Exception as e:
+                        logger.warning(
+                            "api_service_packages_discovery_failed",
+                            service=service_id,
+                            error=str(e),
+                        )
+                        review_flags.append(f"API service '{service_id}' packages not discovered: {e}")
+
+                    asset = Asset(
+                        id=f"api_service_{service_id}",
+                        type=AssetType.API_SERVICE,
+                        name=service_id,
+                        source_project=project_key,
+                        state=MigrationState.DISCOVERED,
+                        metadata={"service": service, "packages": packages},
+                        review_flags=["Deployable API endpoint — requires manual Fabric/Azure endpoint migration"],
+                    )
+                    registry.add_asset(asset)
+                    processed += 1
+            except Exception as e:
+                logger.warning("api_services_discovery_failed", error=str(e))
+                review_flags.append(f"API services not discovered: {e}")
+
             registry.save()
             logger.info("discovery_complete", project=project_key, assets=processed)
 

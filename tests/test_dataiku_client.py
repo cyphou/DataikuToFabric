@@ -368,6 +368,24 @@ class TestJupyterNotebooks:
             assert result == mock_data
 
 
+class TestApiServices:
+    @pytest.mark.asyncio
+    async def test_list_api_services_calls_correct_endpoint(self, client):
+        mock_data = [{"id": "svc1", "endpoints": []}]
+        with patch.object(client, "_paginated_list", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.list_api_services("PROJ")
+            m.assert_called_once_with("/projects/PROJ/apiservices/")
+            assert result == mock_data
+
+    @pytest.mark.asyncio
+    async def test_list_api_service_packages_calls_correct_endpoint(self, client):
+        mock_data = [{"id": "v1", "createdOn": 123}]
+        with patch.object(client, "_paginated_list", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.list_api_service_packages("PROJ", "svc1")
+            m.assert_called_once_with("/projects/PROJ/apiservices/svc1/packages/")
+            assert result == mock_data
+
+
 class _FakeStreamResponse:
     """Minimal stand-in for an httpx streaming response."""
 

@@ -78,6 +78,9 @@ class TestDetectDialect:
     def test_fallback_to_recipe_type(self):
         assert _detect_dialect({"recipe_type": "mysql"}) == "mysql"
 
+    def test_generic_sql_recipe_type_maps_to_tsql(self):
+        assert DIALECT_MAP[_detect_dialect({"recipe_type": "sql"})] == "tsql"
+
     def test_empty_metadata(self):
         assert _detect_dialect({}) == ""
 
@@ -356,7 +359,10 @@ class TestMultiStatement:
 
 class TestDialectMap:
     def test_all_expected_keys(self):
-        expected_keys = {"oracle", "postgresql", "postgres", "mysql", "hive", "impala", "sqlserver", "mssql"}
+        expected_keys = {
+            "oracle", "postgresql", "postgres", "mysql", "hive", "impala",
+            "sqlserver", "mssql", "sql", "sql_query", "sql_script",
+        }
         assert expected_keys == set(DIALECT_MAP.keys())
 
     def test_oracle_maps_to_oracle(self):

@@ -16,6 +16,7 @@ def setup_logging(
     redact_secrets: bool = True,
 ) -> None:
     """Configure structured logging for the migration toolkit."""
+    structlog.reset_defaults()
     log_level = getattr(logging, level.upper(), logging.INFO)
 
     processors: list = [
@@ -41,7 +42,7 @@ def setup_logging(
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
-        cache_logger_on_first_use=True,
+        cache_logger_on_first_use=False,
     )
 
     if log_file:
