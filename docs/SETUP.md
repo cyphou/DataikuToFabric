@@ -58,6 +58,7 @@ dataiku:
   max_retries: 3
   verify_ssl: true
   ca_bundle_path: null
+  proxy_url: null
 
 fabric:
   workspace_id: "<FABRIC_WORKSPACE_GUID>"
@@ -71,6 +72,7 @@ fabric:
 migration:
   output_dir: "output"
   parallel_agents: false
+  migrate_data: false                 # Set true or use migrate --with-data
 
 orchestrator:
   agent_timeout_seconds: 300
@@ -152,6 +154,23 @@ Run the full migration pipeline (discovery → conversion → validation):
 ```bash
 dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE
 ```
+
+To migrate dataset contents as well as schemas, opt in explicitly:
+
+```bash
+dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --with-data
+```
+
+To publish a DirectLake semantic model after Lakehouse datasets are converted:
+
+```bash
+dataiku-to-fabric publish-powerbi --project MY_PROJECT --model-name Sales_Model
+```
+
+Discovery also records Dataiku webapps, streaming endpoints, Jupyter notebooks,
+API services, project library dependencies, Data Quality metadata, saved-model
+versions, dashboard insights, and project variables. Items without a direct
+Fabric equivalent are retained in `output/registry.json` with `review_flags`.
 
 #### Resume from checkpoint
 

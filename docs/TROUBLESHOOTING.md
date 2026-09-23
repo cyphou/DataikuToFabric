@@ -50,6 +50,38 @@ datasets, folders, flow, scenarios, models, and dashboards are still
 discovered normally; only the `CONNECTION` assets are skipped. To include
 connections, use an admin API key or ask a Dataiku admin to export them.
 
+### Discovery reports unsupported asset review flags
+
+Discovery intentionally catalogs assets that do not have a one-to-one Fabric
+target. Review `output/registry.json` and the generated report for flags on:
+
+- webapps and streaming endpoints: plan a Fabric Eventstream, Azure service, or application replacement;
+- Jupyter notebooks: migrate the notebook payload to a Fabric Notebook and review Dataiku SDK calls;
+- API services: recreate prediction/custom endpoints with Azure or Fabric serving components;
+- dashboard insights: recreate the visual in Power BI and remap its source datasets;
+- project libraries: reproduce packages in the Fabric environment or notebook requirements;
+- saved-model versions: choose the target model-serving/evaluation workflow.
+
+These flags do not fail discovery. They identify work that requires design
+decisions rather than automatic conversion.
+
+### Data Quality status or rules are missing
+
+Data Quality endpoints require project/dataset configuration permissions and
+may return no rules for unmonitored datasets. The dataset remains discoverable;
+check `metadata.data_quality` and the discovery review flags. Use an API key
+with the required read configuration access if these signals are needed for QA.
+
+### `publish-powerbi` finds no eligible tables
+
+The command publishes converted datasets stored as Lakehouse tables. Run the
+dataset migration first, ensure the registry contains converted assets with a
+non-empty schema and `storage: lakehouse`, then rerun:
+
+```bash
+dataiku-to-fabric publish-powerbi --project MY_PROJECT
+```
+
 ### `[SSL: CERTIFICATE_VERIFY_FAILED]` with Dataiku API
 
 Your Dataiku endpoint is likely using a private or self-signed certificate chain.

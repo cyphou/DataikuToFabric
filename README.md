@@ -5,11 +5,11 @@
 | | |
 |---|---|
 | 🏷️ **Version** | 2.0.0 |
-| ✅ **Tests** | 877 passed |
+| ✅ **Tests** | 1195 passed |
 | 🐍 **Python** | 3.10+ |
 | 📜 **License** | MIT |
 
-| 🎯 **Capabilities** | 9 migration agents · 10 SQL Oracle rules · 9 PostgreSQL rules · 20+ SDK patterns · 10 visual recipe types · 12 connection types |
+| 🎯 **Capabilities** | 9 migration agents · 10 SQL Oracle rules · 9 PostgreSQL rules · 20+ SDK patterns · 10 visual recipe types · 12 connection types · 16 discovery asset types |
 
 ---
 
@@ -96,6 +96,9 @@ dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --asset-ids
 dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --with-data
 ```
 
+`--with-data` opts into the export → upload → load path. Without it, dataset
+migration generates schema/DDL artifacts only.
+
 #### 📊 Publish to Power BI / Fabric
 
 ```bash
@@ -104,6 +107,9 @@ dataiku-to-fabric migrate --project MY_PROJECT --target MY_WORKSPACE --with-data
 dataiku-to-fabric publish-powerbi --project MY_PROJECT
 dataiku-to-fabric publish-powerbi --project MY_PROJECT --model-name Sales_Model
 ```
+
+This creates a DirectLake semantic model from converted Lakehouse datasets. The
+datasets must already be present in the registry as converted Lakehouse assets.
 
 #### ⚡ Quality & analysis
 
@@ -242,7 +248,7 @@ Merge multiple Dataiku projects into one Fabric workspace: fingerprint-based ass
 
 ```mermaid
 flowchart LR
-    A["🔧 Dataiku DSS\nProject API"] --> B["🔍 DISCOVER\n10 asset types"]
+    A["🔧 Dataiku DSS\nProject API"] --> B["🔍 DISCOVER\n16 asset types + metadata"]
     B --> C["🔄 CONVERT\n5 agent types"]
     C --> D["✅ VALIDATE\nSchema + logic"]
     D --> E["☁️ DEPLOY\nFabric workspace"]
@@ -256,7 +262,7 @@ flowchart LR
     style F fill:#f59e0b,color:#000,stroke:#f59e0b
 ```
 
-**🔍 Step 1 — Discover:** Scans Dataiku project via API, catalogs 10 asset types (SQL/Python/Visual recipes, datasets, connections, flows, scenarios, models, dashboards, folders)
+**🔍 Step 1 — Discover:** Scans the Dataiku project via the REST API and catalogs recipes, datasets, folders, connections, flows, scenarios, saved models and versions, dashboards and insights, webapps, streaming endpoints, Jupyter notebooks, API services and packages, project libraries, project variables, and Data Quality metadata. Unsupported targets are retained as review flags instead of being silently dropped.
 
 **🔄 Step 2 — Convert:** 5 specialized agents convert each asset to its Fabric equivalent (SQL → T-SQL, Python → Notebook, Visual → SQL, Datasets → DDL, Flows → Pipelines)
 
@@ -312,6 +318,14 @@ Each agent runs in **parallel waves** (independent agents execute concurrently).
 | Managed Folder | Lakehouse Files Section | Dataset |
 | Flow Graph | Data Pipeline | Flow → Pipeline |
 | Scenario (Schedule) | Pipeline Trigger | Flow → Pipeline |
+| Saved model + versions | Review metadata / manual model-serving plan | Discovery + Validation |
+| Dashboard insight | Review visual payload for Power BI recreation | Discovery |
+| Webapp | Manual Fabric/Azure re-implementation | Discovery |
+| Streaming endpoint | Manual Fabric Eventstream/Kafka design | Discovery |
+| Jupyter notebook | Manual Fabric notebook migration | Discovery |
+| API service + packages | Manual Fabric/Azure endpoint migration | Discovery |
+| Project library dependencies | Review Python package/environment requirements | Discovery + Python Migration |
+| Dataset Data Quality status/rules | Validation metadata for migration QA | Discovery |
 | Connection (Oracle/PG) | On-Premises Data Gateway | Connection |
 | Connection (S3/Azure) | OneLake Shortcut | Connection |
 | Connection (HDFS) | OneLake File Copy | Connection |
@@ -356,7 +370,7 @@ Each agent runs in **parallel waves** (independent agents execute concurrently).
 |------|-------------|
 | **Commands** | |
 | `test-connection` | Verify Dataiku server connectivity and auth |
-| `discover` | Scan Dataiku project, catalog all assets |
+| `discover` | Scan Dataiku project, catalog assets and migration metadata |
 | `migrate` | Run full migration pipeline |
 | `validate` | Validate migrated assets |
 | `report` | Generate migration report |
@@ -444,7 +458,7 @@ output/
 | # | Agent | Responsibility | Input | Output |
 |---|-------|----------------|-------|--------|
 | 1 | 🎛️ **Orchestrator** | DAG-based coordination, retries, checkpointing | Config | Migration report |
-| 2 | 🔍 **Discovery** | Scan Dataiku via API, catalog 10 asset types | Project key | Registry JSON |
+| 2 | 🔍 **Discovery** | Scan Dataiku via API, catalog 16 asset types and metadata | Project key | Registry JSON |
 | 3 | 📝 **SQL Migration** | Oracle/PG → T-SQL / Spark SQL via sqlglot | SQL recipes | `.sql` scripts |
 | 4 | 🐍 **Python Migration** | Dataiku SDK → PySpark, generate notebooks | Python recipes | `.ipynb` files |
 | 5 | 📊 **Visual Recipe** | Join/Group/Filter/Window/Pivot/Prepare → SQL | Visual recipes | `.sql` queries |
@@ -460,7 +474,7 @@ output/
 ## 🧪 Testing
 
 ```bash
-py -m pytest tests/ -v                       # Run all 877 tests
+py -m pytest tests/ -v                       # Run all tests
 py -m pytest tests/test_sql_translator.py    # Run specific file
 py -m pytest tests/ --cov --cov-report=html  # Coverage report
 ```
@@ -486,7 +500,7 @@ py -m pytest tests/ --cov --cov-report=html  # Coverage report
 | Equivalence / regression | 21 | Schema match, type compat, regression baselines |
 | API server | 19 | REST endpoints, job manager, health check |
 | E2E pipeline | 19 | Full integration tests |
-| Discovery agent | 19 | All 10 asset types, dependency resolution |
+| Discovery agent | 30+ | Asset inventory, metadata capture, failure isolation |
 | QA suite | 18 | Governance, fidelity, cross-validation |
 | Plugins | 18 | Plugin lifecycle, directory loading, hooks |
 | Lineage | 18 | Graph building, traversal, impact analysis |
@@ -609,7 +623,7 @@ DataikuToFabric/
 │       ├── migration_state.py             # State machine
 │       └── report.py                      # Report model
 │
-├── tests/                                 # 877 tests
+├── tests/                                 # 1195 tests
 ├── plugins/                               # User plugins directory
 ├── templates/                             # Notebook, pipeline, DDL templates
 ├── examples/                              # Sample migration project + demo

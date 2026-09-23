@@ -135,6 +135,9 @@ The toolkit follows a **pipeline architecture** with an **agent-based execution 
     │  GET /recipes/            │                           │
     │  GET /datasets/           │                           │
     │  GET /flow/               │                           │
+    │  GET /data-quality/...   │                           │
+    │  GET /insights/...       │                           │
+    │  GET /savedmodels/...    │                           │
     ▼                           │                           │
  ┌──────────┐                  │                           │
  │ raw API  │    parse &        │                           │
@@ -199,7 +202,12 @@ The registry is the **single source of truth** for all migration state.
       "name": "compute_customers",
       "state": "discovered",
       "dependencies": ["dataset_raw_customers", "dataset_raw_orders"],
-      "metadata": { ... },
+      "metadata": {
+        "schema": { ... },
+        "data_quality": { "status": "OK", "rules": { ... } },
+        "versions": [ ... ],
+        "version_details": { ... }
+      },
       "target": null,
       "errors": [],
       "review_flags": [],

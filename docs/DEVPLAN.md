@@ -1,7 +1,7 @@
 # Development Plan — Dataiku to Fabric Migration Toolkit
 
 > Phased roadmap from scaffold to production-ready migration tool.
-> **Last updated:** 2025-05-20 (Phase 27 done)
+> **Last updated:** 2026-09-23 (Dataiku coverage audit updates)
 >
 > **See also:** [UPGRADE_PLAN.md](UPGRADE_PLAN.md) — Phases 19–30 expansion plan incorporating features from TableauToPowerBI v37.0.0.
 
@@ -16,9 +16,9 @@
 | Base agent contract | **Done** | ABC with execute/validate/rollback |
 | Orchestrator | **Done** | DAG-based wave execution, parallel dispatch, retry logic |
 | CLI | **Done** | Commands, --dry-run, progress bars, interactive, config validate, status, --output-format |
-| Dataiku client | **Done** | Pagination, auth, all endpoints, streaming export, row count |
+| Dataiku client | **Done** | Bearer auth, pagination, retries, streaming export, connection diagnostics, and migration-focused REST coverage |
 | Fabric client | **Done** | Azure Identity auth, async polling, OneLake upload, warehouse DDL |
-| Discovery agent | **Done** | All 10 asset types, dependency resolution |
+| Discovery agent | **Done** | 16 asset types, dependency resolution, Data Quality, saved-model versions, project libraries, insight payloads, and review flags |
 | SQL translator | **Done** | sqlglot transpile, validate_sql, multi-statement |
 | Oracle rules | **Done** | DECODE (nested), NVL2, TO_DATE/CHAR/NUMBER, DUAL, sequences, LISTAGG, RETURNING, MERGE, CONNECT BY flags |
 | PostgreSQL rules | **Done** | LIMIT/OFFSET, SERIAL, BOOLEAN, TEXT, NOW, EXTRACT, ILIKE, \|\|→+, LATERAL→CROSS APPLY, RETURNING→OUTPUT |
@@ -39,7 +39,7 @@
 | Plugin system | **Done** | Base plugin ABC, plugin manager, directory loading, 7 lifecycle hooks, sample plugin |
 | Equivalence testing | **Done** | Schema equivalence, type compatibility, row count match, regression baselines |
 | Multi-project merge | **Done** | Merge config, assessment, deduplication, conflict resolution, merge HTML report |
-| Tests | **877 passing** | Oracle (33), PostgreSQL (31), SQL agent (24), discovery (19), client (14), translators (17), python translator (17), python agent (32), visual recipe (16), visual agent (40), dataset agent (55), connection agent (39), flow pipeline agent (65), validation agent (85), checkpoint/resume (33), CLI (53), logger (6), E2E (19), perf (4), data migration (29), assessment (16), QA suite (18), self-healing (28), schema drift (14), lineage (18), API server (19), plugins (18), equivalence/regression (21), merge (14), conftest fixtures |
+| Tests | **1195 passing** | Full unit, integration, performance, API, migration, discovery, translator, QA, recovery, and regression coverage |
 
 ---
 
