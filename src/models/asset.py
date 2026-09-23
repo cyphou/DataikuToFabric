@@ -27,6 +27,7 @@ class AssetType(str, Enum):
     JUPYTER_NOTEBOOK = "jupyter_notebook"
     API_SERVICE = "api_service"
     PROJECT_LIBRARY = "project_library"
+    INSIGHT = "insight"
 
 
 class MigrationState(str, Enum):

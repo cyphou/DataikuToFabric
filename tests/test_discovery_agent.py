@@ -72,6 +72,8 @@ def _make_mock_client(fixtures: dict) -> AsyncMock:
     client.list_saved_model_versions = AsyncMock(side_effect=_list_saved_model_versions)
     client.get_saved_model_version_details = AsyncMock(side_effect=_get_saved_model_version_details)
     client.list_dashboards.return_value = fixtures["dashboards"]
+    client.list_insights.return_value = fixtures.get("insights", [])
+    client.get_insight.return_value = fixtures.get("insight_payloads", {})
 
     client.list_webapps.return_value = fixtures.get("webapps", [])
     client.list_streaming_endpoints.return_value = fixtures.get("streaming_endpoints", [])
@@ -205,6 +207,50 @@ class TestDiscoveryAgentBasic:
 
         dashboard_assets = ctx.registry.get_by_type(AssetType.DASHBOARD)
         assert len(dashboard_assets) == 2
+
+    @pytest.mark.asyncio
+    async def test_discovers_insights_with_payload_and_review_flag(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["insights"] = [{"id": "insight_sales", "name": "Sales Trend", "type": "line"}]
+        fixtures["insight_payloads"] = {"id": "insight_sales", "payload": "chart-data"}
+        ctx = _make_context(tmp_path)
+        ctx.connectors["dataiku"] = _make_mock_client(fixtures)
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        assert result.status.value == "completed"
+        assets = ctx.registry.get_by_type(AssetType.INSIGHT)
+        assert len(assets) == 1
+        assert assets[0].metadata["payload"]["payload"] == "chart-data"
+        assert any("manual Fabric/Power BI migration" in flag for flag in assets[0].review_flags)
+
+    @pytest.mark.asyncio
+    async def test_insight_detail_failure_keeps_insight_asset(self, tmp_path):
+        fixtures = _load_fixtures()
+        fixtures["insights"] = [{"id": "insight_sales", "name": "Sales Trend"}]
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.get_insight = AsyncMock(side_effect=RuntimeError("payload boom"))
+        ctx.connectors["dataiku"] = client
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        assert result.status.value == "completed"
+        assert len(ctx.registry.get_by_type(AssetType.INSIGHT)) == 1
+        assert any("Insight 'insight_sales' payload not discovered" in flag for flag in result.review_flags)
+
+    @pytest.mark.asyncio
+    async def test_insights_failure_does_not_fail_discovery(self, tmp_path):
+        fixtures = _load_fixtures()
+        ctx = _make_context(tmp_path)
+        client = _make_mock_client(fixtures)
+        client.list_insights = AsyncMock(side_effect=RuntimeError("list boom"))
+        ctx.connectors["dataiku"] = client
+
+        result = await DiscoveryAgent().execute(ctx)
+
+        assert result.status.value == "completed"
+        assert any("Insights not discovered" in flag for flag in result.review_flags)
 
 
 class TestDiscoveryConnectionsGracefulDegradation:

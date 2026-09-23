@@ -308,6 +308,38 @@ class DiscoveryAgent(BaseAgent):
                 logger.warning("dashboards_discovery_failed", error=str(e))
                 review_flags.append(f"Dashboards not discovered: {e}")
 
+            # Discover dashboard/report insights. These contain the visual
+            # payloads that a dashboard listing alone does not expose.
+            try:
+                insights = await client.list_insights(project_key)
+                for insight in insights:
+                    insight_id = insight.get("id", insight.get("name", ""))
+                    payload: dict = {}
+                    try:
+                        payload = await client.get_insight(project_key, insight_id)
+                    except Exception as e:
+                        logger.warning(
+                            "insight_detail_discovery_failed",
+                            insight=insight_id,
+                            error=str(e),
+                        )
+                        review_flags.append(f"Insight '{insight_id}' payload not discovered: {e}")
+
+                    asset = Asset(
+                        id=f"insight_{insight_id}",
+                        type=AssetType.INSIGHT,
+                        name=insight.get("name", insight_id),
+                        source_project=project_key,
+                        state=MigrationState.DISCOVERED,
+                        metadata={"listing": insight, "payload": payload},
+                        review_flags=["Insight visual requires manual Fabric/Power BI migration review"],
+                    )
+                    registry.add_asset(asset)
+                    processed += 1
+            except Exception as e:
+                logger.warning("insights_discovery_failed", error=str(e))
+                review_flags.append(f"Insights not discovered: {e}")
+
             # Discover webapps — Dataiku webapps (Shiny/Bokeh/Standard) have
             # no Fabric equivalent; catalog them but flag for manual review.
             try:

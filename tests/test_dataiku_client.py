@@ -355,6 +355,24 @@ class TestListDashboards:
             assert result == []
 
 
+class TestInsights:
+    @pytest.mark.asyncio
+    async def test_list_insights_calls_correct_endpoint(self, client):
+        mock_data = [{"id": "insight1", "name": "Sales Trend"}]
+        with patch.object(client, "_paginated_list", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.list_insights("PROJ")
+            m.assert_called_once_with("/projects/PROJ/insights/")
+            assert result == mock_data
+
+    @pytest.mark.asyncio
+    async def test_get_insight_calls_correct_endpoint(self, client):
+        mock_data = {"id": "insight1", "payload": "chart-data"}
+        with patch.object(client, "_request", new_callable=AsyncMock, return_value=mock_data) as m:
+            result = await client.get_insight("PROJ", "insight1")
+            m.assert_called_once_with("GET", "/projects/PROJ/insights/insight1")
+            assert result == mock_data
+
+
 class TestListWebapps:
     @pytest.mark.asyncio
     async def test_list_webapps_calls_correct_endpoint(self, client):

@@ -294,6 +294,14 @@ class DataikuClient:
                 return []
             raise
 
+    async def list_insights(self, project_key: str) -> list[dict]:
+        """List all insights in a project."""
+        return await self._paginated_list(f"/projects/{project_key}/insights/")
+
+    async def get_insight(self, project_key: str, insight_id: str) -> dict:
+        """Get an insight's full definition and payload."""
+        return await self._request("GET", f"/projects/{project_key}/insights/{insight_id}")
+
     async def list_webapps(self, project_key: str) -> list[dict]:
         """List all webapps in a project (Shiny/Bokeh/Standard — no Fabric equivalent)."""
         return await self._paginated_list(f"/projects/{project_key}/webapps/")
